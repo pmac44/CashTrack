@@ -300,6 +300,26 @@
   .modal-row:last-of-type { border: none; }
   .modal-footer { display: flex; justify-content: flex-end; margin-top: 8px; }
 
+  /* ── Duplicate finder ── */
+  #dupes-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    z-index: 50; align-items: flex-start; justify-content: center; padding: 24px; overflow-y: auto;
+  }
+  #dupes-overlay.show { display: flex; }
+  .dupes-panel {
+    background: var(--bg2); border: 1px solid var(--brd); border-radius: 16px;
+    padding: 24px; max-width: 800px; width: 95%; display: flex; flex-direction: column; gap: 16px;
+  }
+  .dupes-panel h2 { font-size: 18px; font-weight: 700; margin: 0; }
+  .dupe-group { border: 1px solid var(--brd); border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+  .dupe-group-header { font-size: 13px; font-weight: 600; color: var(--t2); margin-bottom: 8px; font-family: monospace; }
+  .dupe-item { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--brd); font-size: 13px; }
+  .dupe-item:last-child { border-bottom: none; }
+  .dupe-item label { display: flex; align-items: center; gap: 8px; flex: 1; cursor: pointer; }
+  .dupe-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dupe-cat { color: var(--t2); font-size: 11px; white-space: nowrap; }
+  .dupe-amt { font-family: monospace; font-weight: 600; white-space: nowrap; min-width: 80px; text-align: right; }
+
   /* ── Drop zone overlay ── */
   #drop-overlay {
     display: none; position: fixed; inset: 0; background: rgba(240,136,62,0.08);
@@ -366,6 +386,7 @@
     </div>
     <button class="btn-ai" id="btn-ai" onclick="aiCategorise()">✦ AI Categorise</button>
     <button class="btn-sm" onclick="triggerImport()">Import CSV</button>
+    <button class="btn-sm" onclick="findDuplicates()">Find Dupes</button>
     <span id="sync-status" style="font-family:monospace;font-size:12px;color:var(--t2)"></span>
     <button class="btn-sm" onclick="triggerSync()" id="btn-sync">☁ Sync</button>
     <button class="btn-sm" onclick="exportToFile()">Export</button>
@@ -578,6 +599,25 @@
     <div id="modal-body"></div>
     <div class="modal-footer">
       <button class="btn-primary" onclick="closeModal()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Duplicate finder overlay ════════════════════════════════════════════════ -->
+<div id="dupes-overlay">
+  <div class="dupes-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>Possible Duplicates</h2>
+      <button class="btn-sm" onclick="closeDupes()">✕ Close</button>
+    </div>
+    <p style="color:var(--t2);font-size:13px;margin:0">Transactions with the same date, amount and account. Tick the ones to <strong>remove</strong>, then click Delete.</p>
+    <div id="dupes-list"></div>
+    <div id="dupes-footer" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+      <span id="dupes-count" style="font-size:13px;color:var(--t2)"></span>
+      <div style="display:flex;gap:8px">
+        <button class="btn-sm" onclick="closeDupes()">Cancel</button>
+        <button class="btn-primary" id="dupes-delete-btn" onclick="deleteSelectedDupes()">Delete selected</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1008,14 +1048,29 @@ function importCSV(text) {
     return;
   }
 
-  // Build set of existing fingerprints
-  const existing = new Set(state.transactions.map(t => t.fingerprint));
+  // Build dedup map: date+amount+account → count of existing transactions
+  // This handles legitimate duplicates (e.g. two $5.50 coffees same day)
+  // by allowing the same number of identical date+amount combos through
+  const dedupKey = (dateStr, amount, account) => `${dateStr}::${amount}::${account || ''}`;
+  const existingCounts = new Map();
+  for (const t of state.transactions) {
+    const k = dedupKey(t.dateStr, t.amount, t.account);
+    existingCounts.set(k, (existingCounts.get(k) || 0) + 1);
+  }
+  const importCounts = new Map();
 
   let added = 0, dupes = 0;
   for (const row of parsed) {
+    const k = dedupKey(row.dateStr, row.amount, row.account || '');
+    const alreadyHave = existingCounts.get(k) || 0;
+    const alreadyImported = importCounts.get(k) || 0;
+    if (alreadyImported < alreadyHave) {
+      // We already have this many of this date+amount combo — skip
+      importCounts.set(k, alreadyImported + 1);
+      dupes++; continue;
+    }
+    importCounts.set(k, alreadyImported + 1);
     const fp = fingerprint(row.dateStr, row.amount, row.description) + '::' + (row.account || '');
-    if (existing.has(fp)) { dupes++; continue; }
-    existing.add(fp);
     const cat = row.nabCategory
       ? mapNABCategory(row.nabCategory)
       : guessCategory(row.description);
@@ -1042,6 +1097,94 @@ function importCSV(text) {
   populateAccountFilters();
   renderAll();
   showImportModal(parsed.length, added, dupes);
+}
+
+// ══ Duplicate Finder ══════════════════════════════════════════════════════════
+
+function findDuplicates() {
+  // Group transactions by date + amount + account
+  const groups = new Map();
+  for (const t of state.transactions) {
+    const k = `${t.dateStr}::${t.amount}::${t.account || ''}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(t);
+  }
+
+  // Keep only groups with more than one transaction
+  const dupeGroups = [...groups.entries()]
+    .filter(([, txns]) => txns.length > 1)
+    .sort(([, a], [, b]) => b[0].date - a[0].date); // newest first
+
+  const listEl = document.getElementById('dupes-list');
+  listEl.innerHTML = '';
+
+  if (dupeGroups.length === 0) {
+    listEl.innerHTML = '<p style="text-align:center;color:var(--t2);padding:24px 0">No duplicates found.</p>';
+    document.getElementById('dupes-footer').style.display = 'none';
+    document.getElementById('dupes-overlay').classList.add('show');
+    return;
+  }
+
+  document.getElementById('dupes-footer').style.display = '';
+  let totalDupes = 0;
+
+  for (const [key, txns] of dupeGroups) {
+    totalDupes += txns.length;
+    const group = document.createElement('div');
+    group.className = 'dupe-group';
+
+    const amt = txns[0].amount;
+    const amtStr = (amt < 0 ? '-' : '') + '$' + Math.abs(amt).toFixed(2);
+    const amtColor = amt >= 0 ? 'var(--grn)' : 'var(--red)';
+
+    group.innerHTML = `<div class="dupe-group-header">${escHtml(txns[0].dateStr)} &nbsp;·&nbsp; <span style="color:${amtColor}">${amtStr}</span> &nbsp;·&nbsp; ${escHtml(txns[0].account || '')} &nbsp;·&nbsp; ${txns.length} transactions</div>`;
+
+    for (let i = 0; i < txns.length; i++) {
+      const t = txns[i];
+      const catLabel = (CAT_MAP[t.category] || {}).label || t.category;
+      const item = document.createElement('div');
+      item.className = 'dupe-item';
+      item.innerHTML = `
+        <label>
+          <input type="checkbox" value="${t.id}" class="dupe-check" ${i > 0 ? 'checked' : ''}>
+          <span class="dupe-desc" title="${escHtml(t.description)}">${escHtml(t.description)}</span>
+        </label>
+        <span class="dupe-cat">${escHtml(catLabel)}</span>
+        <span class="dupe-amt" style="color:${amtColor}">${amtStr}</span>
+      `;
+      group.appendChild(item);
+    }
+    listEl.appendChild(group);
+  }
+
+  updateDupeCount();
+  // Listen for checkbox changes
+  listEl.addEventListener('change', updateDupeCount);
+  document.getElementById('dupes-overlay').classList.add('show');
+}
+
+function updateDupeCount() {
+  const checked = document.querySelectorAll('.dupe-check:checked').length;
+  document.getElementById('dupes-count').textContent = checked + ' selected for removal';
+  document.getElementById('dupes-delete-btn').disabled = checked === 0;
+}
+
+function deleteSelectedDupes() {
+  const checked = [...document.querySelectorAll('.dupe-check:checked')].map(cb => cb.value);
+  if (checked.length === 0) return;
+  if (!confirm(`Remove ${checked.length} transaction${checked.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+
+  const removeSet = new Set(checked);
+  state.transactions = state.transactions.filter(t => !removeSet.has(t.id));
+  scheduleSave();
+  renderAll();
+  closeDupes();
+  setStatus(`Removed ${checked.length} duplicate${checked.length > 1 ? 's' : ''}`);
+  setTimeout(() => setStatus(''), 4000);
+}
+
+function closeDupes() {
+  document.getElementById('dupes-overlay').classList.remove('show');
 }
 
 // ══ AI Categorisation ═════════════════════════════════════════════════════════
@@ -2445,6 +2588,7 @@ document.addEventListener('drop', e => {
 
 // Close modal on overlay click
 document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+document.getElementById('dupes-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeDupes(); });
 
 // Warn before leaving if there are unsaved changes to cloud file
 // (IDB saves are instant so no data loss risk, but cloud file may be stale)
