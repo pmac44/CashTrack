@@ -177,6 +177,10 @@
   }
   .preset-btn:hover { color: var(--txt); border-color: var(--t2); }
   .preset-btn.active { background: rgba(240,136,62,0.15); border-color: var(--acc); color: var(--acc); }
+  .preset-btn.custom-preset { position: relative; padding-right: 20px; }
+  .preset-btn.custom-preset .preset-x { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 10px; opacity: 0.4; cursor: pointer; }
+  .preset-btn.custom-preset .preset-x:hover { opacity: 1; color: #e55; }
+  .preset-btn.save-preset-btn { border-style: dashed; color: var(--t2); font-size: 12px; }
   td.note-col { min-width: 80px; max-width: 180px; }
   td.amt-col { font-family: monospace; font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; }
 
@@ -406,6 +410,7 @@
       <button class="preset-btn" onclick="setDatePreset('lastfy')">Last FY</button>
       <button onclick="clearDateFilter()" style="background:transparent;border:none;color:var(--t2);font-size:11px;font-family:monospace;cursor:pointer;padding:2px 4px;text-decoration:underline">All</button>
     </div>
+    <div class="preset-row" id="custom-presets-row" style="display:none"></div>
   </div>
   <div id="content">
     <!-- Dashboard -->
@@ -632,6 +637,7 @@ let state = {
   fileHandle: null,   // File System Access API handle (null if not supported / not yet set)
   fileName: null,
   dirty: false,
+  customPresets: [],   // { id, name, from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
   // Sync layer fields
   deviceId: null,
   deviceName: null,
@@ -674,6 +680,17 @@ function guessCategory(desc) {
 }
 
 const hasFileSystemAPI = typeof window.showOpenFilePicker === 'function';
+
+// Return CATS sorted alphabetically, with Income first and Other last
+function sortedCats() {
+  return [...CATS].sort((a, b) => {
+    if (a.id === 'income') return -1;
+    if (b.id === 'income') return 1;
+    if (a.id === 'other') return 1;
+    if (b.id === 'other') return -1;
+    return a.label.localeCompare(b.label);
+  });
+}
 
 // ══ Bank category mapping ═════════════════════════════════════════════════════
 // Maps bank's own category names → our internal category ids
@@ -899,6 +916,9 @@ function makeJSON() {
     lastUpdated: new Date().toISOString(),
     lastDevice: state.deviceName || null,
     lastDeviceId: state.deviceId || null,
+    customPresets: (state.customPresets || []).map(p => ({
+      id: p.id, name: p.name, from: p.from, to: p.to,
+    })),
     categories: CATS.map(cat => ({
       id: cat.id,
       label: cat.label,
@@ -943,6 +963,9 @@ function loadFromJSON(obj) {
   state.transactions = (obj.transactions || []).map(t => ({
     ...t,
     date: new Date(t.date),
+  }));
+  state.customPresets = (obj.customPresets || []).map(p => ({
+    id: p.id, name: p.name, from: p.from, to: p.to,
   }));
   // Store sync metadata from cloud file (v2 support, v1 backward compat)
   state.cloudLastUpdated = obj.lastUpdated || null;
@@ -1235,7 +1258,7 @@ function makeReviewRow(s) {
   // Override dropdown — lets user pick any category instead
   const sel = document.createElement('select');
   sel.style.cssText = 'background:var(--bg3);border:1px solid var(--brd);border-radius:7px;padding:4px 8px;color:var(--txt);font-size:12px;font-family:monospace;cursor:pointer;width:100%';
-  for (const cat of CATS) {
+  for (const cat of sortedCats()) {
     const opt = document.createElement('option');
     opt.value = cat.id;
     opt.textContent = cat.label;
@@ -1333,6 +1356,7 @@ function closeAIReview() {
 function renderAll() {
   renderDashboard();
   renderTransactions();
+  renderCustomPresets();
   updateAIButton();
   // Show API key field and pre-fill if saved
   const keyWrap = document.getElementById('api-key-wrap');
@@ -1510,7 +1534,7 @@ function renderTransactions() {
     sel.style.color = cat.color;
     sel.style.borderColor = cat.color + '55';
     sel.style.background = cat.color + '18';
-    for (const c of CATS) {
+    for (const c of sortedCats()) {
       const opt = document.createElement('option');
       opt.value = c.id; opt.textContent = c.label;
       if (c.id === tx.category) opt.selected = true;
@@ -1591,7 +1615,7 @@ function renderTransactions() {
 function populateCategoryFilter() {
   const sel = document.getElementById('filter-cat');
   sel.innerHTML = '<option value="all">All categories</option>';
-  for (const c of CATS) {
+  for (const c of sortedCats()) {
     const opt = document.createElement('option');
     opt.value = c.id; opt.textContent = c.label;
     sel.appendChild(opt);
@@ -1697,6 +1721,63 @@ function clearDateFilter() {
   if (t) t.value = '';
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
   renderAll();
+}
+
+// ── Custom date range presets ─────────────────────────────────────────────────
+
+function renderCustomPresets() {
+  const row = document.getElementById('custom-presets-row');
+  if (!row) return;
+  const presets = state.customPresets || [];
+  const fromVal = document.getElementById('filter-date-from').value;
+  const toVal = document.getElementById('filter-date-to').value;
+  if (presets.length === 0 && !(fromVal && toVal)) {
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = '';
+  row.innerHTML = '';
+  for (const p of presets) {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn custom-preset';
+    btn.innerHTML = escHtml(p.name) + '<span class="preset-x" title="Delete preset">&times;</span>';
+    btn.onclick = (e) => {
+      if (e.target.classList.contains('preset-x')) return;
+      document.getElementById('filter-date-from').value = p.from;
+      document.getElementById('filter-date-to').value = p.to;
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderAll();
+    };
+    btn.querySelector('.preset-x').onclick = (e) => {
+      e.stopPropagation();
+      if (confirm('Delete preset "' + p.name + '"?')) {
+        state.customPresets = state.customPresets.filter(x => x.id !== p.id);
+        scheduleSave();
+        renderCustomPresets();
+      }
+    };
+    row.appendChild(btn);
+  }
+  // "Save current range" button — only show when a date range is active
+  if (fromVal && toVal) {
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'preset-btn save-preset-btn';
+    saveBtn.textContent = '+ Save range';
+    saveBtn.title = 'Save current date range as a preset';
+    saveBtn.onclick = () => promptSavePreset(fromVal, toVal);
+    row.appendChild(saveBtn);
+  }
+}
+
+function promptSavePreset(fromDate, toDate) {
+  const name = prompt('Name for this preset (e.g. "Q1 2026"):');
+  if (!name || !name.trim()) return;
+  const id = 'cp_' + Date.now();
+  if (!state.customPresets) state.customPresets = [];
+  state.customPresets.push({ id, name: name.trim(), from: fromDate, to: toDate });
+  scheduleSave();
+  renderCustomPresets();
 }
 
 function getGlobalAccountFilter() {
@@ -2159,7 +2240,7 @@ function renderCatList() {
   const el = document.getElementById('cat-list');
   if (!el) return;
   el.innerHTML = '';
-  for (const cat of CATS) {
+  for (const cat of sortedCats()) {
     const count = state.transactions.filter(t => t.category === cat.id).length;
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--brd);cursor:pointer';
