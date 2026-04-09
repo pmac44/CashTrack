@@ -207,11 +207,16 @@
       flex-direction: column; align-items: stretch;
     }
     #filterbar .filter-row {
-      display: grid; grid-template-columns: auto 1fr auto 1fr auto 1fr;
-      gap: 4px; align-items: center;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    #filterbar .filter-field {
+      display: flex; align-items: center; gap: 6px;
+    }
+    #filterbar .filter-field .filter-label {
+      min-width: 55px;
     }
     #filterbar select, #filterbar input[type="date"] {
-      min-width: 0; width: 100%; font-size: 12px; padding: 6px 6px;
+      flex: 1; min-width: 0; font-size: 13px; padding: 7px 8px;
     }
     .preset-row { gap: 4px; justify-content: flex-start; }
     .preset-btn { font-size: 10px; padding: 5px 7px; }
@@ -373,14 +378,20 @@
   </div>
   <div id="filterbar">
     <div class="filter-row">
-      <span class="filter-label">Account</span>
-      <select id="filter-account-global" onchange="renderAll()">
-        <option value="all">All accounts</option>
-      </select>
-      <span class="filter-label">From</span>
-      <input type="date" id="filter-date-from" onchange="renderAll()">
-      <span class="filter-label">To</span>
-      <input type="date" id="filter-date-to" onchange="renderAll()">
+      <div class="filter-field">
+        <span class="filter-label">Account</span>
+        <select id="filter-account-global" onchange="renderAll()">
+          <option value="all">All accounts</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <span class="filter-label">From</span>
+        <input type="date" id="filter-date-from" onchange="renderAll()">
+      </div>
+      <div class="filter-field">
+        <span class="filter-label">To</span>
+        <input type="date" id="filter-date-to" onchange="renderAll()">
+      </div>
     </div>
     <div class="preset-row">
       <button class="preset-btn" onclick="setDatePreset('week')">This week</button>
