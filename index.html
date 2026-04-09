@@ -1351,10 +1351,8 @@ function renderAll() {
 }
 
 function isTransfer(t) {
-  // Exclude our Transfers category AND bank-tagged internal transfers
-  if (t.category === 'transfers') return true;
-  if ((t.nabCategory || '').toLowerCase() === 'internal transfers') return true;
-  return false;
+  // Only exclude transactions the user has categorised as Transfers
+  return t.category === 'transfers';
 }
 
 function computeStats() {
