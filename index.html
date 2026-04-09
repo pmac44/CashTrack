@@ -709,7 +709,7 @@ function mapNABCategory(nabCat) {
 // ══ CSV parsing ═══════════════════════════════════════════════════════════════
 // NAB export format:
 // Date, Amount, Account Number, (empty), Transaction Type, Transaction Details,
-// Category, Merchant Name, Processed On
+// Balance, Category, Merchant Name, Processed On
 
 const MONTHS = { january:0, february:1, march:2, april:3, may:4, june:5,
                  july:6, august:7, september:8, october:9, november:10, december:11,
@@ -739,9 +739,15 @@ function parseCSVLine(line) {
   return fields;
 }
 
+let _csvHasBalance = false; // detected per import
+
 function parseNABCSV(text) {
   const lines = text.trim().split(/\r?\n/);
   const results = [];
+  // Detect format from header row
+  if (lines.length > 0 && /^date/i.test(lines[0])) {
+    _csvHasBalance = lines[0].toLowerCase().includes(',balance,');
+  }
   for (const raw of lines) {
     if (!raw.trim()) continue;
     const f = parseCSVLine(raw);
@@ -754,10 +760,19 @@ function parseNABCSV(text) {
     const date = parseNABDate(f[0]);
     if (!date) continue;
 
-    // Col 5 = Transaction Details, col 7 = Merchant Name, col 6 = NAB Category
-    const details    = f[5] || '';
-    const merchant   = f[7] || '';
-    const nabCat     = f[6] || '';
+    // Two CSV formats exist:
+    // 10-col: Date, Amount, Account, (empty), Type, Details, Balance, Category, Merchant, Processed
+    //  9-col: Date, Amount, Account, (empty), Type, Details, Category, Merchant, Processed
+    const details = f[5] || '';
+    let balance = null, nabCat = '', merchant = '';
+    if (_csvHasBalance) {
+      balance  = parseFloat(f[6]) || null;
+      nabCat   = f[7] || '';
+      merchant = f[8] || '';
+    } else {
+      nabCat   = f[6] || '';
+      merchant = f[7] || '';
+    }
     // Use merchant name if available, fall back to transaction details
     const description = merchant || details;
 
@@ -771,7 +786,7 @@ function parseNABCSV(text) {
       rawDetails: details,
       nabCategory: nabCat,
       account,
-      balance: null,
+      balance,
     });
   }
   return results;
