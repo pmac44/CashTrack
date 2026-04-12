@@ -478,6 +478,9 @@
           <option value="debit">Debits only</option>
           <option value="credit">Credits only</option>
         </select>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--t2);cursor:pointer;user-select:none;margin-left:6px">
+          <input type="checkbox" id="filter-hide-transfers" onchange="renderTransactions()" style="cursor:pointer"> Hide transfers
+        </label>
         <span class="tx-count" id="tx-count"></span>
       </div>
       <div id="tx-totals" style="margin-bottom:0">
@@ -1625,10 +1628,12 @@ function renderTransactions() {
   const catF     = document.getElementById('filter-cat').value;
   const typeF    = document.getElementById('filter-type').value;
   const accFLocal = (document.getElementById('filter-account') || {}).value || 'all';
+  const hideTransfers = document.getElementById('filter-hide-transfers').checked;
 
   // Start with global filters (account + date from tabbar), then apply local filters
   const globalFiltered = applyGlobalFilters(state.transactions);
   const filtered = globalFiltered.filter(t => {
+    if (hideTransfers && isTransfer(t)) return false;
     if (catF !== 'all' && t.category !== catF) return false;
     if (typeF === 'debit'  && t.amount >= 0) return false;
     if (typeF === 'credit' && t.amount <= 0) return false;
