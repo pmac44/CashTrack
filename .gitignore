@@ -1,0 +1,21 @@
+########################################################################
+# SAFETY .gitignore
+# Extra safety layer in case sensitive files ever end up in this folder.
+# The main protection is that git only runs inside github-deploy/.
+# These patterns block the kinds of files that should NEVER be published.
+########################################################################
+
+# Bank / transaction data
+CashTrack.json
+nab-transactions.json
+*-transactions.json
+Transactions/
+*.csv
+
+# Local/editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+*~
