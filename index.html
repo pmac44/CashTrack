@@ -1069,28 +1069,59 @@ function importCSV(text) {
     return;
   }
 
-  // Build dedup map: date+amount+account → count of existing transactions
-  // This handles legitimate duplicates (e.g. two $5.50 coffees same day)
-  // by allowing the same number of identical date+amount combos through
-  const dedupKey = (dateStr, amount, account) => `${dateStr}::${amount}::${account || ''}`;
-  const existingCounts = new Map();
+  // Extract NAB's reference number from a description (e.g. "L6888607000" from
+  // "ONLINE L6888607000 Weekly pay INDUSTRIOUS"). Pattern: single letter
+  // followed by 9-10 digits. Returns null if no ref number found.
+  const extractRefNumber = (desc) => {
+    const m = (desc || '').match(/\b([A-Z]\d{9,10})\b/);
+    return m ? m[1] : null;
+  };
+
+  // Build two dedup maps:
+  //   refKey: refNumber + amount → used when description has a ref number.
+  //     Catches the NAB pending-then-settled pattern (same ref, different dates).
+  //   dateKey: dateStr + amount + account → fallback for transactions without
+  //     a ref number (e.g. card purchases). Counts occurrences so legitimate
+  //     same-day same-amount transactions (two $5.50 coffees) still come through.
+  const refKey = (ref, amount) => `${ref}::${amount}`;
+  const dateKey = (dateStr, amount, account) => `${dateStr}::${amount}::${account || ''}`;
+
+  const existingRefs = new Set();
+  const existingDateCounts = new Map();
   for (const t of state.transactions) {
-    const k = dedupKey(t.dateStr, t.amount, t.account);
-    existingCounts.set(k, (existingCounts.get(k) || 0) + 1);
+    const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
+    if (ref) {
+      existingRefs.add(refKey(ref, t.amount));
+    } else {
+      const k = dateKey(t.dateStr, t.amount, t.account);
+      existingDateCounts.set(k, (existingDateCounts.get(k) || 0) + 1);
+    }
   }
-  const importCounts = new Map();
+  const importDateCounts = new Map();
+  const importRefs = new Set();
 
   let added = 0, dupes = 0;
   for (const row of parsed) {
-    const k = dedupKey(row.dateStr, row.amount, row.account || '');
-    const alreadyHave = existingCounts.get(k) || 0;
-    const alreadyImported = importCounts.get(k) || 0;
-    if (alreadyImported < alreadyHave) {
-      // We already have this many of this date+amount combo — skip
-      importCounts.set(k, alreadyImported + 1);
-      dupes++; continue;
+    const ref = extractRefNumber(row.description) || extractRefNumber(row.rawDetails);
+    if (ref) {
+      // Ref-number dedup: if we already have this ref+amount, it's a duplicate
+      // regardless of date (handles pending-then-settled where date shifts).
+      const rk = refKey(ref, row.amount);
+      if (existingRefs.has(rk) || importRefs.has(rk)) {
+        dupes++; continue;
+      }
+      importRefs.add(rk);
+    } else {
+      // Fallback for transactions without a ref number: old date+amount+account check
+      const k = dateKey(row.dateStr, row.amount, row.account || '');
+      const alreadyHave = existingDateCounts.get(k) || 0;
+      const alreadyImported = importDateCounts.get(k) || 0;
+      if (alreadyImported < alreadyHave) {
+        importDateCounts.set(k, alreadyImported + 1);
+        dupes++; continue;
+      }
+      importDateCounts.set(k, alreadyImported + 1);
     }
-    importCounts.set(k, alreadyImported + 1);
     const fp = fingerprint(row.dateStr, row.amount, row.description) + '::' + (row.account || '');
     // Override rules win first (fix NAB mis-labels like "Weekly pay" as transfer).
     // Otherwise use NAB's category, or guess from description if NAB has none.
@@ -1126,10 +1157,24 @@ function importCSV(text) {
 // ══ Duplicate Finder ══════════════════════════════════════════════════════════
 
 function findDuplicates() {
-  // Group transactions by date + amount + account
+  // Extract NAB's reference number from a description (e.g. "L6888607000").
+  // Shared with importCSV — same pattern: single letter + 9-10 digits.
+  const extractRefNumber = (desc) => {
+    const m = (desc || '').match(/\b([A-Z]\d{9,10})\b/);
+    return m ? m[1] : null;
+  };
+
+  // Group transactions so likely duplicates sit together:
+  //   If the transaction has a NAB reference number, group by ref + amount
+  //     (catches pending-then-settled where date differs but ref matches).
+  //   Otherwise fall back to date + amount + account
+  //     (safer for card purchases without ref numbers).
   const groups = new Map();
   for (const t of state.transactions) {
-    const k = `${t.dateStr}::${t.amount}::${t.account || ''}`;
+    const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
+    const k = ref
+      ? `ref::${ref}::${t.amount}`
+      : `date::${t.dateStr}::${t.amount}::${t.account || ''}`;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(t);
   }
