@@ -768,20 +768,6 @@ function applyOverrideRules(desc) {
 //   income: weekly pay industrious
 //   groceries: woolworths
 //   # This is a comment
-// Resolve a user-typed category name (label OR id, case-insensitive) to an id.
-// Returns the id string, or null if nothing matches.
-function resolveCategoryToken(tok) {
-  if (!tok) return null;
-  const t = tok.trim().toLowerCase();
-  // Exact id match first (fast path: "income", "groceries")
-  if (CAT_MAP[t]) return t;
-  // Otherwise match by label (case-insensitive)
-  for (const c of CATS) {
-    if ((c.label || '').toLowerCase() === t) return c.id;
-  }
-  return null;
-}
-
 function parseRulesText(text) {
   const rules = [];
   const errors = [];
@@ -794,15 +780,14 @@ function parseRulesText(text) {
       errors.push(`Line ${i + 1}: missing ':' — expected "category: keyword"`);
       return;
     }
-    const catToken = line.slice(0, colonIdx).trim();
+    const catId = line.slice(0, colonIdx).trim().toLowerCase();
     const keyword = line.slice(colonIdx + 1).trim().toLowerCase();
-    if (!catToken || !keyword) {
+    if (!catId || !keyword) {
       errors.push(`Line ${i + 1}: category or keyword is empty`);
       return;
     }
-    const catId = resolveCategoryToken(catToken);
-    if (!catId) {
-      errors.push(`Line ${i + 1}: unknown category "${catToken}"`);
+    if (!CAT_MAP[catId]) {
+      errors.push(`Line ${i + 1}: unknown category "${catId}"`);
       return;
     }
     rules.push({ cat: catId, words: [keyword] });
@@ -814,12 +799,8 @@ function rulesToText(rules) {
   if (!rules || !rules.length) return '';
   const out = [];
   for (const r of rules) {
-    const cat = CAT_MAP[r.cat];
-    // Prefer the user-facing label; fall back to the id if the category was
-    // deleted or missing (so the line still round-trips safely).
-    const display = (cat && cat.label) ? cat.label : r.cat;
     for (const w of (r.words || [])) {
-      out.push(`${display}: ${w}`);
+      out.push(`${r.cat}: ${w}`);
     }
   }
   return out.join('\n');
@@ -866,7 +847,7 @@ function openAddRuleDialog(tx) {
   _addRuleContext = { txId: tx.id, category: tx.category };
   const cat = CAT_MAP[tx.category] || CAT_MAP.other;
   const catEl = document.getElementById('add-rule-target-cat');
-  catEl.textContent = cat.label;
+  catEl.textContent = cat.label + ' (' + cat.id + ')';
   catEl.style.color = cat.color;
   document.getElementById('add-rule-desc').textContent = tx.description;
   // Reset "show original" wrapper to hidden each time the dialog opens
@@ -2924,7 +2905,7 @@ function renderSettingsTab() {
   const status = document.getElementById('rules-status');
   if (status) status.textContent = '';
   const catsEl = document.getElementById('rules-valid-cats');
-  if (catsEl) catsEl.textContent = CATS.map(c => c.label || c.id).join(', ');
+  if (catsEl) catsEl.textContent = CATS.map(c => c.id).join(', ');
 }
 
 function saveRulesFromSettings() {

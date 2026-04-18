@@ -289,11 +289,6 @@
     align-items: center; justify-content: center; z-index: 50;
   }
   #modal-overlay.show { display: flex; }
-  #add-rule-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-    align-items: center; justify-content: center; z-index: 55;
-  }
-  #add-rule-overlay.show { display: flex; }
   .modal {
     background: var(--bg2); border: 1px solid var(--brd); border-radius: 16px;
     padding: 32px; max-width: 420px; width: 90%; display: flex; flex-direction: column; gap: 16px;
@@ -637,40 +632,6 @@
   </div>
 </div>
 
-<!-- ══ Add rule dialog (from "+ Rule" button on transaction rows) ══════════════ -->
-<div id="add-rule-overlay">
-  <div class="modal" style="max-width:460px">
-    <h2 style="margin:0 0 4px 0">Add import rule</h2>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:14px">Future transactions whose description contains the keyword below will be auto-categorised.</div>
-
-    <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:4px">CATEGORY</div>
-    <div id="add-rule-target-cat" style="font-size:14px;font-weight:600;margin-bottom:14px"></div>
-
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">
-      <span style="font-family:monospace;font-size:11px;color:var(--t2)">KEYWORD TO MATCH — EDIT IF NEEDED</span>
-      <button type="button" onclick="toggleAddRuleOriginal()"
-        style="background:none;border:none;color:var(--t2);font-size:11px;font-family:monospace;cursor:pointer;text-decoration:underline;padding:0">
-        show original
-      </button>
-    </div>
-    <input id="add-rule-keyword" type="text" spellcheck="false"
-      style="width:100%;background:var(--bg2);border:2px solid var(--accent,#4ade80);border-radius:6px;padding:10px 12px;color:var(--txt);font-size:14px;font-family:monospace;outline:none;margin-bottom:6px">
-    <div style="font-size:11px;color:var(--t2);margin-bottom:12px">Tip: shorter is more forgiving. "woolworths" will match "WOOLWORTHS METRO SYDNEY 1234". Case doesn't matter.</div>
-
-    <div id="add-rule-desc-wrap" style="display:none;margin-bottom:12px">
-      <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:4px">ORIGINAL TRANSACTION DESCRIPTION (read-only)</div>
-      <div id="add-rule-desc" style="font-size:13px;background:var(--bg3);border:1px solid var(--brd);border-radius:6px;padding:8px 10px;word-break:break-word;color:var(--t2)"></div>
-    </div>
-
-    <div id="add-rule-warning" style="display:none;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:6px;padding:10px 12px;margin-bottom:10px;font-size:13px"></div>
-
-    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
-      <button class="btn-sm" onclick="closeAddRuleDialog()">Cancel</button>
-      <button class="btn-primary" onclick="confirmAddRule(false)">Add rule</button>
-    </div>
-  </div>
-</div>
-
 <!-- ══ Duplicate finder overlay ════════════════════════════════════════════════ -->
 <div id="dupes-overlay">
   <div class="dupes-panel">
@@ -768,20 +729,6 @@ function applyOverrideRules(desc) {
 //   income: weekly pay industrious
 //   groceries: woolworths
 //   # This is a comment
-// Resolve a user-typed category name (label OR id, case-insensitive) to an id.
-// Returns the id string, or null if nothing matches.
-function resolveCategoryToken(tok) {
-  if (!tok) return null;
-  const t = tok.trim().toLowerCase();
-  // Exact id match first (fast path: "income", "groceries")
-  if (CAT_MAP[t]) return t;
-  // Otherwise match by label (case-insensitive)
-  for (const c of CATS) {
-    if ((c.label || '').toLowerCase() === t) return c.id;
-  }
-  return null;
-}
-
 function parseRulesText(text) {
   const rules = [];
   const errors = [];
@@ -794,15 +741,14 @@ function parseRulesText(text) {
       errors.push(`Line ${i + 1}: missing ':' — expected "category: keyword"`);
       return;
     }
-    const catToken = line.slice(0, colonIdx).trim();
+    const catId = line.slice(0, colonIdx).trim().toLowerCase();
     const keyword = line.slice(colonIdx + 1).trim().toLowerCase();
-    if (!catToken || !keyword) {
+    if (!catId || !keyword) {
       errors.push(`Line ${i + 1}: category or keyword is empty`);
       return;
     }
-    const catId = resolveCategoryToken(catToken);
-    if (!catId) {
-      errors.push(`Line ${i + 1}: unknown category "${catToken}"`);
+    if (!CAT_MAP[catId]) {
+      errors.push(`Line ${i + 1}: unknown category "${catId}"`);
       return;
     }
     rules.push({ cat: catId, words: [keyword] });
@@ -814,125 +760,11 @@ function rulesToText(rules) {
   if (!rules || !rules.length) return '';
   const out = [];
   for (const r of rules) {
-    const cat = CAT_MAP[r.cat];
-    // Prefer the user-facing label; fall back to the id if the category was
-    // deleted or missing (so the line still round-trips safely).
-    const display = (cat && cat.label) ? cat.label : r.cat;
     for (const w of (r.words || [])) {
-      out.push(`${display}: ${w}`);
+      out.push(`${r.cat}: ${w}`);
     }
   }
   return out.join('\n');
-}
-
-// ── Keyword suggestion for "+ Rule" button ───────────────────────────────────
-// Try to pull 2-3 distinctive words out of a NAB description so the user gets
-// a sensible default in the Add-rule dialog (they can always edit it).
-// Strategy: strip reference numbers, dates, card numbers, common boilerplate,
-// then take the first couple of remaining words.
-const RULE_KEYWORD_STOPWORDS = new Set([
-  'transfer','from','to','via','osko','payid','bpay','eft','eftpos','direct',
-  'debit','credit','purchase','payment','withdrawal','deposit','cash','card',
-  'visa','mastercard','ref','reference','id','txn','au','aus','australia',
-  'sydney','melbourne','brisbane','perth','adelaide','pty','ltd','the','and',
-]);
-
-function suggestKeyword(desc) {
-  if (!desc) return '';
-  let s = desc.toLowerCase();
-  // Strip NAB reference numbers (letter + 9-10 digits)
-  s = s.replace(/\b[a-z]\d{9,10}\b/g, ' ');
-  // Strip card numbers, dates, and long digit runs
-  s = s.replace(/\b\d{4,}\b/g, ' ');
-  s = s.replace(/\b\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?\b/g, ' ');
-  // Keep letters, numbers, spaces, ampersands
-  s = s.replace(/[^a-z0-9& ]+/g, ' ');
-  // Collapse whitespace and split
-  const words = s.split(/\s+/).filter(w => w && !RULE_KEYWORD_STOPWORDS.has(w) && w.length > 1);
-  if (!words.length) return desc.trim().toLowerCase().slice(0, 40);
-  // Take up to 3 words, prefer words that are >=4 chars
-  const picked = [];
-  for (const w of words) {
-    picked.push(w);
-    if (picked.length >= 3) break;
-  }
-  return picked.join(' ').trim();
-}
-
-// ── Add-rule dialog (opened from "+ Rule" button on a transaction row) ───────
-let _addRuleContext = null;
-
-function openAddRuleDialog(tx) {
-  _addRuleContext = { txId: tx.id, category: tx.category };
-  const cat = CAT_MAP[tx.category] || CAT_MAP.other;
-  const catEl = document.getElementById('add-rule-target-cat');
-  catEl.textContent = cat.label;
-  catEl.style.color = cat.color;
-  document.getElementById('add-rule-desc').textContent = tx.description;
-  // Reset "show original" wrapper to hidden each time the dialog opens
-  document.getElementById('add-rule-desc-wrap').style.display = 'none';
-  const suggested = suggestKeyword(tx.description);
-  const kwInput = document.getElementById('add-rule-keyword');
-  kwInput.value = suggested;
-  document.getElementById('add-rule-warning').style.display = 'none';
-  document.getElementById('add-rule-warning').innerHTML = '';
-  document.getElementById('add-rule-overlay').classList.add('show');
-  setTimeout(() => { kwInput.focus(); kwInput.select(); }, 50);
-}
-
-function toggleAddRuleOriginal() {
-  const wrap = document.getElementById('add-rule-desc-wrap');
-  wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
-}
-
-function closeAddRuleDialog() {
-  document.getElementById('add-rule-overlay').classList.remove('show');
-  _addRuleContext = null;
-}
-
-function confirmAddRule(force) {
-  if (!_addRuleContext) return;
-  const kw = (document.getElementById('add-rule-keyword').value || '').trim().toLowerCase();
-  const warningEl = document.getElementById('add-rule-warning');
-  if (!kw) {
-    warningEl.style.display = '';
-    warningEl.innerHTML = '<span style="color:var(--red)">Keyword can\'t be empty.</span>';
-    return;
-  }
-  const targetCat = _addRuleContext.category;
-  // Find any existing rule with the same keyword
-  const rules = state.overrideRules || [];
-  const existing = rules.find(r => (r.words || []).some(w => w === kw));
-  if (existing && existing.cat !== targetCat && !force) {
-    const existingCatLabel = (CAT_MAP[existing.cat] || { label: existing.cat }).label;
-    const targetCatLabel   = (CAT_MAP[targetCat]   || { label: targetCat   }).label;
-    warningEl.style.display = '';
-    warningEl.innerHTML =
-      `<div style="color:var(--red);margin-bottom:8px">⚠ A rule for "<b>${escHtml(kw)}</b>" already points to <b>${escHtml(existingCatLabel)}</b>.</div>`
-      + `<div style="font-size:12px;color:var(--t2);margin-bottom:8px">Change it to <b>${escHtml(targetCatLabel)}</b>?</div>`
-      + `<div style="display:flex;gap:6px">
-           <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="confirmAddRule(true)">Yes, change it</button>
-           <button class="btn-sm" style="padding:6px 14px;font-size:12px" onclick="closeAddRuleDialog()">Cancel</button>
-         </div>`;
-    return;
-  }
-  // If a rule for this keyword exists pointing to a different cat, replace it.
-  if (existing && existing.cat !== targetCat) {
-    // Remove this keyword from the old rule group
-    existing.words = existing.words.filter(w => w !== kw);
-    // If that rule is now empty, drop it
-    state.overrideRules = rules.filter(r => (r.words || []).length > 0);
-  }
-  // Add to (or create) a rule group for the target category.
-  // Keep each word in its own entry — matches the text-box format.
-  if (!(existing && existing.cat === targetCat)) {
-    state.overrideRules.push({ cat: targetCat, words: [kw] });
-  }
-  scheduleSave();
-  closeAddRuleDialog();
-  // Brief confirmation in the sync-status area
-  updateSyncStatus('Rule added ✓');
-  setTimeout(() => updateSyncStatus(''), 2000);
 }
 
 // ══ State ════════════════════════════════════════════════════════════════════
@@ -2075,16 +1907,6 @@ function renderTransactions() {
 
     // Category cell (index 3)
     tr.cells[3].appendChild(sel);
-    // "+ Rule" button — lets the user save this category choice as an import rule
-    const ruleBtn = document.createElement('button');
-    ruleBtn.type = 'button';
-    ruleBtn.textContent = '+ Rule';
-    ruleBtn.title = 'Add an import rule so future similar transactions get this category automatically';
-    ruleBtn.style.cssText = 'margin-left:6px;padding:3px 8px;background:transparent;border:1px solid var(--brd);border-radius:5px;color:var(--t2);font-family:monospace;font-size:11px;cursor:pointer;vertical-align:middle';
-    ruleBtn.onmouseenter = () => { ruleBtn.style.color = 'var(--txt)'; ruleBtn.style.borderColor = 'var(--t2)'; };
-    ruleBtn.onmouseleave = () => { ruleBtn.style.color = 'var(--t2)'; ruleBtn.style.borderColor = 'var(--brd)'; };
-    ruleBtn.onclick = () => openAddRuleDialog(tx);
-    tr.cells[3].appendChild(ruleBtn);
     tbody.appendChild(tr);
   }
 
@@ -2924,7 +2746,7 @@ function renderSettingsTab() {
   const status = document.getElementById('rules-status');
   if (status) status.textContent = '';
   const catsEl = document.getElementById('rules-valid-cats');
-  if (catsEl) catsEl.textContent = CATS.map(c => c.label || c.id).join(', ');
+  if (catsEl) catsEl.textContent = CATS.map(c => c.id).join(', ');
 }
 
 function saveRulesFromSettings() {
