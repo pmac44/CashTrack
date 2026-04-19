@@ -1011,11 +1011,6 @@ function openCashDialog() {
   // Populate category dropdown from CATS
   const catSel = document.getElementById('cash-category');
   catSel.innerHTML = '';
-  // "+ Add new category…" at the TOP of the list (user preference)
-  const addOpt = document.createElement('option');
-  addOpt.value = '__add__';
-  addOpt.textContent = '＋ Add new category…';
-  catSel.appendChild(addOpt);
   for (const c of sortedCats()) {
     const opt = document.createElement('option');
     opt.value = c.id;
@@ -1024,31 +1019,6 @@ function openCashDialog() {
     if (c.id === 'other') opt.selected = true;
     catSel.appendChild(opt);
   }
-  // Remember what was last selected so we can revert if the user cancels the
-  // "Add new category" flow.
-  catSel.dataset.prev = catSel.value;
-  catSel.onchange = () => {
-    if (catSel.value !== '__add__') {
-      catSel.dataset.prev = catSel.value;
-      return;
-    }
-    // Revert immediately so the sentinel never stays selected
-    catSel.value = catSel.dataset.prev || 'other';
-    quickAddCategory(name => {
-      if (!name) return;
-      // Insert the new category in sorted position (after the __add__ option)
-      const newCat = CAT_MAP[name];
-      if (!newCat) return;
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = newCat.label;
-      // Simple: append at the end of the real-category block. sortedCats()
-      // will re-order next time the dialog opens.
-      catSel.appendChild(opt);
-      catSel.value = name;
-      catSel.dataset.prev = name;
-    });
-  };
   document.getElementById('cash-warning').style.display = 'none';
   document.getElementById('cash-warning').textContent = '';
   document.getElementById('cash-overlay').classList.add('show');
@@ -1107,28 +1077,6 @@ function saveCashTransaction() {
   renderAll();
   closeCashDialog();
   updateSyncStatus('Cash saved ✓');
-  setTimeout(() => updateSyncStatus(''), 2000);
-}
-
-// ── Delete a transaction (soft delete) ────────────────────────────────────────
-// Marks a transaction as deleted rather than removing it, so:
-//   1. Re-imports can't silently resurrect it (dedup still sees the record).
-//   2. An undo could be added later with zero data-loss risk.
-// Shows a confirm dialog with date/desc/amount so the wrong row can't vanish
-// by accident.
-function deleteTransaction(id) {
-  const tx = state.transactions.find(t => t.id === id);
-  if (!tx) return;
-  const msg = 'Delete this transaction?\n\n'
-    + tx.dateStr + '  ·  ' + tx.description + '  ·  ' + fmt(tx.amount)
-    + (tx.account ? '  ·  ' + tx.account : '')
-    + '\n\nIt will be hidden from all views and totals. You can recover it by '
-    + 'editing CashTrack.json if needed — it isn\'t permanently removed.';
-  if (!confirm(msg)) return;
-  tx.deleted = true;
-  scheduleSave();
-  renderAll();
-  updateSyncStatus('Transaction deleted');
   setTimeout(() => updateSyncStatus(''), 2000);
 }
 
@@ -1445,9 +1393,6 @@ function makeJSON() {
       account: t.account || 'Unknown account',
       balance: t.balance,
       category: t.category,
-      // Soft-delete flag: keeps record so re-imports can't resurrect it,
-      // but hides it from every view via applyGlobalFilters.
-      deleted: !!t.deleted,
     })),
   }, null, 2);
 }
@@ -1632,7 +1577,6 @@ function findDuplicates() {
   //     (safer for card purchases without ref numbers).
   const groups = new Map();
   for (const t of state.transactions) {
-    if (t.deleted) continue; // soft-deleted rows shouldn't show up in dupe finder
     const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
     const k = ref
       ? `ref::${ref}::${t.amount}`
@@ -1747,11 +1691,10 @@ async function aiReviewNextBatch() {
   const btn = document.getElementById('btn-ai');
   if (btn) { btn.disabled = true; btn.textContent = 'Thinking…'; }
 
-  // All transactions sorted: "other" first, then rest (skip soft-deleted)
-  const live = state.transactions.filter(t => !t.deleted);
+  // All transactions sorted: "other" first, then rest
   const allTxns = [
-    ...live.filter(t => t.category === 'other'),
-    ...live.filter(t => t.category !== 'other'),
+    ...state.transactions.filter(t => t.category === 'other'),
+    ...state.transactions.filter(t => t.category !== 'other'),
   ];
   const batch = allTxns.slice(aiReviewBatchOffset, aiReviewBatchOffset + AI_REVIEW_BATCH);
   const remaining = allTxns.length - aiReviewBatchOffset - batch.length;
@@ -1764,7 +1707,7 @@ async function aiReviewNextBatch() {
   const examples = [];
   for (const cat of CATS) {
     if (cat.id === 'other') continue;
-    const sample = state.transactions.filter(t => !t.deleted && t.category === cat.id).slice(0, 3);
+    const sample = state.transactions.filter(t => t.category === cat.id).slice(0, 3);
     for (const s of sample) examples.push({ desc: s.description, category: cat.id });
   }
 
@@ -2287,25 +2230,6 @@ function renderTransactions() {
     ruleBtn.onmouseleave = () => { ruleBtn.style.color = 'var(--t2)'; ruleBtn.style.borderColor = 'var(--brd)'; };
     ruleBtn.onclick = () => openAddRuleDialog(tx);
     tr.cells[3].appendChild(ruleBtn);
-
-    // Row-delete button (soft delete). Hidden until the row is hovered so it
-    // doesn't clutter the table; always reachable on touch via the tap area.
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.textContent = '✕';
-    delBtn.title = 'Delete this transaction';
-    delBtn.style.cssText = 'margin-left:8px;padding:2px 7px;background:transparent;border:1px solid transparent;border-radius:5px;color:var(--t2);font-family:monospace;font-size:13px;line-height:1;cursor:pointer;opacity:0;transition:opacity 0.15s, color 0.15s, border-color 0.15s;vertical-align:middle';
-    delBtn.onmouseenter = () => { delBtn.style.color = 'var(--red)'; delBtn.style.borderColor = 'rgba(248,113,113,0.4)'; };
-    delBtn.onmouseleave = () => { delBtn.style.color = 'var(--t2)'; delBtn.style.borderColor = 'transparent'; };
-    delBtn.onclick = () => deleteTransaction(tx.id);
-    tr.onmouseenter = () => { delBtn.style.opacity = '1'; };
-    tr.onmouseleave = () => { delBtn.style.opacity = '0'; };
-    // Phones don't fire mouseenter — keep the button faintly visible so it's tappable.
-    if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
-      delBtn.style.opacity = '0.6';
-    }
-    tr.cells[4].appendChild(delBtn);
-
     tbody.appendChild(tr);
   }
 
@@ -2331,9 +2255,7 @@ function populateCategoryFilter() {
 function populateAccountFilters() {
   // "Wallet" is always available, even with no cash transactions yet, so the
   // account always appears in the filter + stays consistent for Stage 1 cash.
-  const accountSet = new Set(
-    state.transactions.filter(t => !t.deleted).map(t => t.account || 'Unknown account')
-  );
+  const accountSet = new Set(state.transactions.map(t => t.account || 'Unknown account'));
   accountSet.add('Wallet');
   const accounts = [...accountSet].sort();
   for (const selId of ['filter-account', 'filter-account-global']) {
@@ -2509,9 +2431,6 @@ function applyGlobalFilters(txns) {
   const accF = getGlobalAccountFilter();
   const { from, to } = getDateFilter();
   return txns.filter(t => {
-    // Soft-deleted transactions never appear in views. They stay in the
-    // underlying list only so re-imports can't silently resurrect them.
-    if (t.deleted) return false;
     if (accF !== 'all' && t.account !== accF) return false;
     if (from && t.date < from) return false;
     if (to   && t.date > to)   return false;
@@ -2524,8 +2443,7 @@ function updateAIButton() {
   if (!btn) return;
   btn.style.display = '';
   const gaf = getGlobalAccountFilter();
-  const live = state.transactions.filter(t => !t.deleted);
-  const txns = gaf === 'all' ? live : live.filter(t => t.account === gaf);
+  const txns = gaf === 'all' ? state.transactions : state.transactions.filter(t => t.account === gaf);
   const n = txns.filter(t => t.category === 'other').length;
   btn.textContent = n > 0 ? `❖ AI Review (${n} uncategorised)` : '❖ AI Review all';
 }

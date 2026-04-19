@@ -294,11 +294,6 @@
     align-items: center; justify-content: center; z-index: 55;
   }
   #add-rule-overlay.show { display: flex; }
-  #cash-overlay {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-    align-items: center; justify-content: center; z-index: 55;
-  }
-  #cash-overlay.show { display: flex; }
   .modal {
     background: var(--bg2); border: 1px solid var(--brd); border-radius: 16px;
     padding: 32px; max-width: 420px; width: 90%; display: flex; flex-direction: column; gap: 16px;
@@ -476,10 +471,6 @@
 
     <!-- Transactions -->
     <div id="tab-transactions" style="display:none">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-        <button class="btn-primary" onclick="openCashDialog()" style="padding:8px 16px;font-size:13px">＋ Cash transaction</button>
-        <span style="font-family:monospace;font-size:11px;color:var(--t2)">Log spending from your Wallet (cash in your pocket).</span>
-      </div>
       <div class="filters">
         <input type="text" id="filter-search" placeholder="Search descriptions…" oninput="renderTransactions()">
         <select id="filter-cat" onchange="renderTransactions()">
@@ -680,52 +671,6 @@
   </div>
 </div>
 
-<!-- ══ Add cash transaction dialog ═════════════════════════════════════════════ -->
-<div id="cash-overlay">
-  <div class="modal" style="max-width:460px">
-    <h2 style="margin:0 0 4px 0">Add cash transaction</h2>
-    <div style="font-size:12px;color:var(--t2);margin-bottom:14px">This will be logged against your <b>Wallet</b> account.</div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
-      <div>
-        <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:4px">AMOUNT (A$)</div>
-        <input id="cash-amount" type="number" step="0.01" inputmode="decimal" placeholder="0.00"
-          style="width:100%;background:var(--bg2);border:2px solid var(--accent,#4ade80);border-radius:6px;padding:10px 12px;color:var(--txt);font-size:14px;font-family:monospace;outline:none">
-      </div>
-      <div>
-        <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:4px">DATE</div>
-        <input id="cash-date" type="date"
-          style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:6px;padding:10px 12px;color:var(--txt);font-size:13px;font-family:monospace;outline:none">
-      </div>
-    </div>
-
-    <div style="margin-bottom:10px">
-      <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:4px">DESCRIPTION</div>
-      <input id="cash-description" type="text" placeholder="e.g. Coffee at Market Lane"
-        style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:6px;padding:9px 11px;color:var(--txt);font-size:13px;outline:none">
-    </div>
-
-    <div style="margin-bottom:10px">
-      <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:4px">CATEGORY</div>
-      <select id="cash-category"
-        style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:6px;padding:9px 11px;color:var(--txt);font-size:13px;outline:none"></select>
-    </div>
-
-    <div style="margin-bottom:10px">
-      <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:4px">NOTE (OPTIONAL)</div>
-      <input id="cash-note" type="text" placeholder=""
-        style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:6px;padding:9px 11px;color:var(--txt);font-size:13px;outline:none">
-    </div>
-
-    <div id="cash-warning" style="display:none;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:6px;padding:10px 12px;margin-bottom:10px;font-size:13px;color:var(--red)"></div>
-
-    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
-      <button class="btn-sm" onclick="closeCashDialog()">Cancel</button>
-      <button class="btn-primary" onclick="saveCashTransaction()">Save</button>
-    </div>
-  </div>
-</div>
-
 <!-- ══ Duplicate finder overlay ════════════════════════════════════════════════ -->
 <div id="dupes-overlay">
   <div class="dupes-panel">
@@ -805,7 +750,6 @@ const RULES = [
 const DEFAULT_OVERRIDE_RULES = [
   { cat:'income', words:['weekly pay industrious'] },        // Peter's weekly salary
   { cat:'income', words:['nab p ersonal'] },                 // Credits from NAB Personal to card
-  { cat:'transfers', words:['atm ', 'cash withdrawal', 'cash advance'] }, // ATM cash out = transfer to Wallet (avoids double-count when spent from Wallet)
 ];
 
 function applyOverrideRules(desc) {
@@ -988,147 +932,6 @@ function confirmAddRule(force) {
   closeAddRuleDialog();
   // Brief confirmation in the sync-status area
   updateSyncStatus('Rule added ✓');
-  setTimeout(() => updateSyncStatus(''), 2000);
-}
-
-// ══ Cash transaction dialog ══════════════════════════════════════════════════
-// Format a JS Date as "30 June 25" to match the NAB CSV import format.
-function formatNABDateStr(d) {
-  const month = d.toLocaleString('en-AU', { month: 'long' });
-  const day = d.getDate();
-  const yr2 = String(d.getFullYear() % 100).padStart(2, '0');
-  return `${day} ${month} ${yr2}`;
-}
-
-function openCashDialog() {
-  const today = new Date();
-  document.getElementById('cash-amount').value = '';
-  document.getElementById('cash-description').value = '';
-  document.getElementById('cash-note').value = '';
-  const dateInp = document.getElementById('cash-date');
-  // <input type="date"> wants ISO yyyy-mm-dd
-  dateInp.value = today.toISOString().split('T')[0];
-  // Populate category dropdown from CATS
-  const catSel = document.getElementById('cash-category');
-  catSel.innerHTML = '';
-  // "+ Add new category…" at the TOP of the list (user preference)
-  const addOpt = document.createElement('option');
-  addOpt.value = '__add__';
-  addOpt.textContent = '＋ Add new category…';
-  catSel.appendChild(addOpt);
-  for (const c of sortedCats()) {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.label;
-    // Default to 'other' so nothing accidentally slips into a meaningful bucket
-    if (c.id === 'other') opt.selected = true;
-    catSel.appendChild(opt);
-  }
-  // Remember what was last selected so we can revert if the user cancels the
-  // "Add new category" flow.
-  catSel.dataset.prev = catSel.value;
-  catSel.onchange = () => {
-    if (catSel.value !== '__add__') {
-      catSel.dataset.prev = catSel.value;
-      return;
-    }
-    // Revert immediately so the sentinel never stays selected
-    catSel.value = catSel.dataset.prev || 'other';
-    quickAddCategory(name => {
-      if (!name) return;
-      // Insert the new category in sorted position (after the __add__ option)
-      const newCat = CAT_MAP[name];
-      if (!newCat) return;
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = newCat.label;
-      // Simple: append at the end of the real-category block. sortedCats()
-      // will re-order next time the dialog opens.
-      catSel.appendChild(opt);
-      catSel.value = name;
-      catSel.dataset.prev = name;
-    });
-  };
-  document.getElementById('cash-warning').style.display = 'none';
-  document.getElementById('cash-warning').textContent = '';
-  document.getElementById('cash-overlay').classList.add('show');
-  setTimeout(() => { document.getElementById('cash-amount').focus(); }, 50);
-}
-
-function closeCashDialog() {
-  document.getElementById('cash-overlay').classList.remove('show');
-}
-
-function saveCashTransaction() {
-  const warn = document.getElementById('cash-warning');
-  const amtRaw = (document.getElementById('cash-amount').value || '').trim();
-  const desc = (document.getElementById('cash-description').value || '').trim();
-  const catId = document.getElementById('cash-category').value;
-  const dateVal = document.getElementById('cash-date').value; // yyyy-mm-dd
-  const note = (document.getElementById('cash-note').value || '').trim();
-
-  function fail(msg) {
-    warn.style.display = '';
-    warn.textContent = msg;
-  }
-
-  const amt = parseFloat(amtRaw);
-  if (!amtRaw || isNaN(amt) || amt === 0) return fail('Enter an amount greater than zero.');
-  if (!desc) return fail('Add a short description (e.g. "coffee").');
-  if (!dateVal) return fail('Pick a date.');
-  const date = new Date(dateVal + 'T00:00:00');
-  if (isNaN(date.getTime())) return fail('That date doesn\'t look right.');
-  if (!CAT_MAP[catId]) return fail('Pick a valid category.');
-
-  // Cash is always a debit (spending) unless the user explicitly enters a
-  // negative amount. Amount should be stored as negative (money out).
-  const signedAmount = amt > 0 ? -Math.abs(amt) : amt;
-
-  const dateStr = formatNABDateStr(date);
-  const tx = {
-    id: makeId(),
-    fingerprint: fingerprint(dateStr, signedAmount, desc) + '::Wallet',
-    dateStr,
-    date,
-    amount: signedAmount,
-    description: desc,
-    rawDetails: '',
-    nabCategory: '',
-    note,
-    account: 'Wallet',
-    balance: null, // we don't track a running Wallet balance yet
-    category: catId,
-  };
-  state.transactions.push(tx);
-  // Sort newest first so the new row appears at top
-  state.transactions.sort((a, b) => b.date - a.date);
-  scheduleSave();
-  populateAccountFilters();
-  renderAll();
-  closeCashDialog();
-  updateSyncStatus('Cash saved ✓');
-  setTimeout(() => updateSyncStatus(''), 2000);
-}
-
-// ── Delete a transaction (soft delete) ────────────────────────────────────────
-// Marks a transaction as deleted rather than removing it, so:
-//   1. Re-imports can't silently resurrect it (dedup still sees the record).
-//   2. An undo could be added later with zero data-loss risk.
-// Shows a confirm dialog with date/desc/amount so the wrong row can't vanish
-// by accident.
-function deleteTransaction(id) {
-  const tx = state.transactions.find(t => t.id === id);
-  if (!tx) return;
-  const msg = 'Delete this transaction?\n\n'
-    + tx.dateStr + '  ·  ' + tx.description + '  ·  ' + fmt(tx.amount)
-    + (tx.account ? '  ·  ' + tx.account : '')
-    + '\n\nIt will be hidden from all views and totals. You can recover it by '
-    + 'editing CashTrack.json if needed — it isn\'t permanently removed.';
-  if (!confirm(msg)) return;
-  tx.deleted = true;
-  scheduleSave();
-  renderAll();
-  updateSyncStatus('Transaction deleted');
   setTimeout(() => updateSyncStatus(''), 2000);
 }
 
@@ -1445,9 +1248,6 @@ function makeJSON() {
       account: t.account || 'Unknown account',
       balance: t.balance,
       category: t.category,
-      // Soft-delete flag: keeps record so re-imports can't resurrect it,
-      // but hides it from every view via applyGlobalFilters.
-      deleted: !!t.deleted,
     })),
   }, null, 2);
 }
@@ -1632,7 +1432,6 @@ function findDuplicates() {
   //     (safer for card purchases without ref numbers).
   const groups = new Map();
   for (const t of state.transactions) {
-    if (t.deleted) continue; // soft-deleted rows shouldn't show up in dupe finder
     const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
     const k = ref
       ? `ref::${ref}::${t.amount}`
@@ -1747,11 +1546,10 @@ async function aiReviewNextBatch() {
   const btn = document.getElementById('btn-ai');
   if (btn) { btn.disabled = true; btn.textContent = 'Thinking…'; }
 
-  // All transactions sorted: "other" first, then rest (skip soft-deleted)
-  const live = state.transactions.filter(t => !t.deleted);
+  // All transactions sorted: "other" first, then rest
   const allTxns = [
-    ...live.filter(t => t.category === 'other'),
-    ...live.filter(t => t.category !== 'other'),
+    ...state.transactions.filter(t => t.category === 'other'),
+    ...state.transactions.filter(t => t.category !== 'other'),
   ];
   const batch = allTxns.slice(aiReviewBatchOffset, aiReviewBatchOffset + AI_REVIEW_BATCH);
   const remaining = allTxns.length - aiReviewBatchOffset - batch.length;
@@ -1764,7 +1562,7 @@ async function aiReviewNextBatch() {
   const examples = [];
   for (const cat of CATS) {
     if (cat.id === 'other') continue;
-    const sample = state.transactions.filter(t => !t.deleted && t.category === cat.id).slice(0, 3);
+    const sample = state.transactions.filter(t => t.category === cat.id).slice(0, 3);
     for (const s of sample) examples.push({ desc: s.description, category: cat.id });
   }
 
@@ -2287,25 +2085,6 @@ function renderTransactions() {
     ruleBtn.onmouseleave = () => { ruleBtn.style.color = 'var(--t2)'; ruleBtn.style.borderColor = 'var(--brd)'; };
     ruleBtn.onclick = () => openAddRuleDialog(tx);
     tr.cells[3].appendChild(ruleBtn);
-
-    // Row-delete button (soft delete). Hidden until the row is hovered so it
-    // doesn't clutter the table; always reachable on touch via the tap area.
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.textContent = '✕';
-    delBtn.title = 'Delete this transaction';
-    delBtn.style.cssText = 'margin-left:8px;padding:2px 7px;background:transparent;border:1px solid transparent;border-radius:5px;color:var(--t2);font-family:monospace;font-size:13px;line-height:1;cursor:pointer;opacity:0;transition:opacity 0.15s, color 0.15s, border-color 0.15s;vertical-align:middle';
-    delBtn.onmouseenter = () => { delBtn.style.color = 'var(--red)'; delBtn.style.borderColor = 'rgba(248,113,113,0.4)'; };
-    delBtn.onmouseleave = () => { delBtn.style.color = 'var(--t2)'; delBtn.style.borderColor = 'transparent'; };
-    delBtn.onclick = () => deleteTransaction(tx.id);
-    tr.onmouseenter = () => { delBtn.style.opacity = '1'; };
-    tr.onmouseleave = () => { delBtn.style.opacity = '0'; };
-    // Phones don't fire mouseenter — keep the button faintly visible so it's tappable.
-    if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
-      delBtn.style.opacity = '0.6';
-    }
-    tr.cells[4].appendChild(delBtn);
-
     tbody.appendChild(tr);
   }
 
@@ -2329,13 +2108,7 @@ function populateCategoryFilter() {
 }
 
 function populateAccountFilters() {
-  // "Wallet" is always available, even with no cash transactions yet, so the
-  // account always appears in the filter + stays consistent for Stage 1 cash.
-  const accountSet = new Set(
-    state.transactions.filter(t => !t.deleted).map(t => t.account || 'Unknown account')
-  );
-  accountSet.add('Wallet');
-  const accounts = [...accountSet].sort();
+  const accounts = [...new Set(state.transactions.map(t => t.account || 'Unknown account'))].sort();
   for (const selId of ['filter-account', 'filter-account-global']) {
     const sel = document.getElementById(selId);
     if (!sel) continue;
@@ -2509,9 +2282,6 @@ function applyGlobalFilters(txns) {
   const accF = getGlobalAccountFilter();
   const { from, to } = getDateFilter();
   return txns.filter(t => {
-    // Soft-deleted transactions never appear in views. They stay in the
-    // underlying list only so re-imports can't silently resurrect them.
-    if (t.deleted) return false;
     if (accF !== 'all' && t.account !== accF) return false;
     if (from && t.date < from) return false;
     if (to   && t.date > to)   return false;
@@ -2524,8 +2294,7 @@ function updateAIButton() {
   if (!btn) return;
   btn.style.display = '';
   const gaf = getGlobalAccountFilter();
-  const live = state.transactions.filter(t => !t.deleted);
-  const txns = gaf === 'all' ? live : live.filter(t => t.account === gaf);
+  const txns = gaf === 'all' ? state.transactions : state.transactions.filter(t => t.account === gaf);
   const n = txns.filter(t => t.category === 'other').length;
   btn.textContent = n > 0 ? `❖ AI Review (${n} uncategorised)` : '❖ AI Review all';
 }
