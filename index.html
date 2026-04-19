@@ -22,6 +22,9 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { overflow-x: hidden; max-width: 100vw; }
+  /* Always reserve vertical scrollbar space so expanding rows don't reflow the page sideways.
+     Older browsers ignore this — graceful no-op. */
+  html { scrollbar-gutter: stable; }
   body { background: var(--bg); color: var(--txt); font-family: Georgia, serif; min-height: 100vh; font-size: 14px; }
   button { cursor: pointer; font-family: Georgia, serif; }
   input, select { font-family: monospace; }
@@ -153,6 +156,8 @@
   .cat-expand-row:last-child { border-bottom: none; }
   .cat-expand-row .dt   { font-family: monospace; font-size: 11px; color: var(--t2); }
   .cat-expand-row .dsc  { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cat-expand-row .note { font-size: 11px; color: var(--t2); font-style: italic; margin-top: 2px;
+                          white-space: normal; word-break: break-word; line-height: 1.3; }
   .cat-expand-row .amt  { font-family: monospace; font-size: 12px; font-weight: 600; text-align: right; }
   .cat-expand .see-all  { display: inline-block; margin-top: 6px; font-family: monospace; font-size: 11px; color: var(--acc); text-decoration: none; cursor: pointer; }
   .cat-expand .see-all:hover { text-decoration: underline; }
@@ -2613,9 +2618,15 @@ function buildCatExpansion(catId) {
     const row = document.createElement('div');
     row.className = 'cat-expand-row';
     const amtColor = t.amount >= 0 ? 'var(--grn)' : 'var(--red)';
+    const noteHtml = t.note
+      ? `<div class="note">${escHtml(t.note)}</div>`
+      : '';
     row.innerHTML = `
       <div class="dt">${escHtml(t.dateStr || '')}</div>
-      <div class="dsc" title="${escHtml(t.rawDetails || t.description || '')}">${escHtml(t.description || '')}</div>
+      <div>
+        <div class="dsc" title="${escHtml(t.rawDetails || t.description || '')}">${escHtml(t.description || '')}</div>
+        ${noteHtml}
+      </div>
       <div class="amt" style="color:${amtColor}">${fmt(t.amount)}</div>
     `;
     wrap.appendChild(row);
