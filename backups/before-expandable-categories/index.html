@@ -141,22 +141,6 @@
   .cat-amt { font-family: monospace; font-weight: 600; text-align: right; }
   .cat-pct { font-family: monospace; color: var(--t2); text-align: right; }
   .divider { border: none; border-top: 1px solid var(--brd); grid-column: 1 / -1; margin: 2px 0; }
-  /* Expandable category rows — 4 cells per row share the same row-index and
-     all get the cat-row-hover class, so hover lights up the whole row. */
-  .cat-row { cursor: pointer; padding: 5px 4px; border-radius: 5px; transition: background 0.12s; }
-  .cat-row:hover { background: rgba(255,255,255,0.04); }
-  .cat-row.expanded { background: rgba(255,255,255,0.06); }
-  .cat-chev { display: inline-block; width: 10px; font-size: 10px; color: var(--t2); transition: transform 0.15s; }
-  .cat-row.expanded .cat-chev { transform: rotate(90deg); }
-  .cat-expand { grid-column: 1 / -1; padding: 6px 6px 10px 22px; font-size: 12px; }
-  .cat-expand-row { display: grid; grid-template-columns: 60px 1fr auto; gap: 10px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: baseline; }
-  .cat-expand-row:last-child { border-bottom: none; }
-  .cat-expand-row .dt   { font-family: monospace; font-size: 11px; color: var(--t2); }
-  .cat-expand-row .dsc  { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cat-expand-row .amt  { font-family: monospace; font-size: 12px; font-weight: 600; text-align: right; }
-  .cat-expand .see-all  { display: inline-block; margin-top: 6px; font-family: monospace; font-size: 11px; color: var(--acc); text-decoration: none; cursor: pointer; }
-  .cat-expand .see-all:hover { text-decoration: underline; }
-  .cat-expand .empty    { font-style: italic; color: var(--t2); font-size: 11px; padding: 4px 0; }
 
   /* ── Transactions ── */
   .filters {
@@ -2559,95 +2543,22 @@ function renderDashboard() {
     },
   });
 
-  // Category table (expandable rows)
+  // Category table
   const table = document.getElementById('cat-table');
   // Remove old rows (keep 4 headers)
   while (table.children.length > 4) table.removeChild(table.lastChild);
   if (!s.catData.length) return;
   const totalSpend = s.expenses;
-  // Remember which category is expanded across re-renders
-  if (window._dashExpandedCat === undefined) window._dashExpandedCat = null;
-
   for (const c of s.catData) {
     const count = (window._dashTxns || state.transactions).filter(t => t.category === c.id && t.amount < 0).length;
     const pct = totalSpend > 0 ? ((c.total / totalSpend) * 100).toFixed(1) : '0.0';
-
-    const dot = document.createElement('div'); dot.className = 'cat-name cat-row';
-    dot.innerHTML = `<span class="cat-chev">▸</span><div class="cat-dot" style="background:${c.color}"></div><span>${escHtml(c.label)}</span>`;
-    const num = document.createElement('div'); num.className = 'cat-num cat-row'; num.textContent = count;
-    const amt = document.createElement('div'); amt.className = 'cat-amt cat-row'; amt.style.color = c.color; amt.textContent = fmt(c.total);
-    const pc  = document.createElement('div'); pc.className = 'cat-pct cat-row'; pc.textContent = pct + '%';
-
-    // Click any of the 4 cells toggles expansion for this category
-    const toggle = () => toggleDashCatExpand(c.id);
-    for (const cell of [dot, num, amt, pc]) cell.addEventListener('click', toggle);
-
+    const dot = document.createElement('div'); dot.className = 'cat-name';
+    dot.innerHTML = `<div class="cat-dot" style="background:${c.color}"></div><span>${c.label}</span>`;
+    const num = document.createElement('div'); num.className = 'cat-num'; num.textContent = count;
+    const amt = document.createElement('div'); amt.className = 'cat-amt'; amt.style.color = c.color; amt.textContent = fmt(c.total);
+    const pc  = document.createElement('div'); pc.className = 'cat-pct'; pc.textContent = pct + '%';
     table.append(dot, num, amt, pc);
-
-    // If this category is the currently-expanded one, inject the expansion block.
-    if (window._dashExpandedCat === c.id) {
-      for (const cell of [dot, num, amt, pc]) cell.classList.add('expanded');
-      const exp = buildCatExpansion(c.id);
-      table.append(exp);
-    }
   }
-}
-
-function toggleDashCatExpand(catId) {
-  window._dashExpandedCat = (window._dashExpandedCat === catId) ? null : catId;
-  renderDashboard();
-}
-
-function buildCatExpansion(catId) {
-  const wrap = document.createElement('div');
-  wrap.className = 'cat-expand';
-  const txns = (window._dashTxns || state.transactions)
-    .filter(t => t.category === catId && !isTransfer(t))
-    .sort((a, b) => b.date - a.date);
-  if (!txns.length) {
-    wrap.innerHTML = '<div class="empty">No transactions in this period.</div>';
-    return wrap;
-  }
-  const shown = txns.slice(0, 10);
-  for (const t of shown) {
-    const row = document.createElement('div');
-    row.className = 'cat-expand-row';
-    const amtColor = t.amount >= 0 ? 'var(--grn)' : 'var(--red)';
-    row.innerHTML = `
-      <div class="dt">${escHtml(t.dateStr || '')}</div>
-      <div class="dsc" title="${escHtml(t.rawDetails || t.description || '')}">${escHtml(t.description || '')}</div>
-      <div class="amt" style="color:${amtColor}">${fmt(t.amount)}</div>
-    `;
-    wrap.appendChild(row);
-  }
-  const more = document.createElement('a');
-  more.className = 'see-all';
-  more.textContent = txns.length > 10
-    ? `See all ${txns.length} transactions →`
-    : `Open in Transactions tab →`;
-  more.onclick = (ev) => {
-    ev.stopPropagation();
-    jumpToTransactionsFilteredByCat(catId);
-  };
-  wrap.appendChild(more);
-  return wrap;
-}
-
-function jumpToTransactionsFilteredByCat(catId) {
-  // Switch tab without relying on event.target (can't use showTab directly)
-  document.getElementById('tab-dashboard').style.display    = 'none';
-  document.getElementById('tab-transactions').style.display = '';
-  document.getElementById('tab-categories').style.display   = 'none';
-  document.getElementById('tab-settings').style.display     = 'none';
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  const tabBtns = document.querySelectorAll('.tab');
-  if (tabBtns[1]) tabBtns[1].classList.add('active');
-  // Apply the category filter, clear search, then re-render
-  const sel = document.getElementById('filter-cat');
-  if (sel) sel.value = catId;
-  const search = document.getElementById('filter-search');
-  if (search) search.value = '';
-  renderTransactions();
 }
 
 function renderTransactions() {
