@@ -113,23 +113,6 @@
     display: flex; gap: 5px; flex-wrap: wrap; align-items: center; width: 100%;
   }
 
-  /* Mobile-only "▸ Filters · summary" toggle. Hidden on desktop. */
-  #filter-toggle { display: none; }
-  #filter-toggle .ft-caret {
-    display: inline-block; font-size: 10px; color: var(--t2);
-    transition: transform 0.15s; margin-right: 6px;
-  }
-  #filter-toggle.open .ft-caret { transform: rotate(90deg); }
-  #filter-toggle .ft-label {
-    font-family: monospace; font-size: 11px; letter-spacing: 1px;
-    text-transform: uppercase; color: var(--t2);
-  }
-  #filter-toggle .ft-summary {
-    margin-left: 10px; font-family: monospace; font-size: 11px;
-    color: var(--txt); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    flex: 1; min-width: 0; text-align: left;
-  }
-
   /* ── Content area ── */
   #content { padding: 16px; max-width: 1100px; margin: 0 auto; width: 100%; flex: 1; }
 
@@ -252,18 +235,7 @@
     #tabbar { padding: 0; }
     .tab { flex: 1; text-align: center; padding: 10px 8px; font-size: 13px; }
 
-    /* Mobile filter toggle: visible, full-width, acts as a disclosure header */
-    #filter-toggle {
-      display: flex; align-items: center; width: 100%;
-      background: var(--bg2); border: none; border-bottom: 1px solid var(--brd);
-      padding: 10px 12px; cursor: pointer; text-align: left;
-      -webkit-tap-highlight-color: transparent;
-    }
-    /* Collapse the whole filter area by default on mobile; reveal when toggle is .open */
-    #filterbar { display: none; }
-    #filter-toggle.open + #filterbar { display: flex; }
-
-    /* Filter bar: vertical stack, full width (when expanded on mobile) */
+    /* Filter bar: vertical stack, full width */
     #filterbar {
       padding: 8px; gap: 6px;
       flex-direction: column; align-items: stretch;
@@ -517,13 +489,6 @@
     <button class="tab" onclick="showTab('categories')">Categories</button>
     <button class="tab" onclick="showTab('settings')">Settings</button>
   </div>
-  <!-- Mobile-only toggle. Tapping this collapses/expands #filterbar on phones.
-       Hidden on desktop via CSS. Summary text is populated by updateFilterSummary(). -->
-  <button id="filter-toggle" type="button" onclick="toggleFilterBar()" aria-expanded="false">
-    <span class="ft-caret">▸</span>
-    <span class="ft-label">Filters</span>
-    <span class="ft-summary" id="filter-summary-text"></span>
-  </button>
   <div id="filterbar">
     <div class="filter-row">
       <div class="filter-field">
@@ -2520,52 +2485,10 @@ function closeAIReview() {
 
 // ══ Rendering ═════════════════════════════════════════════════════════════════
 
-// ── Mobile filter toggle ──────────────────────────────────────────────────────
-// Collapses/expands #filterbar on mobile. Updates a summary line on the toggle
-// so you can see current filter state without expanding.
-function toggleFilterBar() {
-  const btn = document.getElementById('filter-toggle');
-  if (!btn) return;
-  const open = btn.classList.toggle('open');
-  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  // Flip the caret glyph too so it still reads right when CSS transitions are skipped.
-  const caret = btn.querySelector('.ft-caret');
-  if (caret) caret.textContent = open ? '▾' : '▸';
-}
-
-function updateFilterSummary() {
-  const out = document.getElementById('filter-summary-text');
-  if (!out) return;
-
-  // Account segment — read the selected <option> text.
-  const acctSel = document.getElementById('filter-account-global');
-  let acctLabel = 'All accounts';
-  if (acctSel && acctSel.selectedOptions && acctSel.selectedOptions[0]) {
-    acctLabel = acctSel.selectedOptions[0].textContent.trim() || 'All accounts';
-  }
-
-  // Date segment — prefer the active preset button's label, else show from–to range,
-  // else "All dates" if nothing is set.
-  let dateLabel = 'All dates';
-  const activePreset = document.querySelector('.preset-btn.active');
-  if (activePreset) {
-    dateLabel = activePreset.textContent.trim();
-  } else {
-    const fromV = (document.getElementById('filter-date-from') || {}).value;
-    const toV   = (document.getElementById('filter-date-to')   || {}).value;
-    if (fromV && toV)       dateLabel = fromV + ' → ' + toV;
-    else if (fromV)         dateLabel = 'From ' + fromV;
-    else if (toV)           dateLabel = 'Up to ' + toV;
-  }
-
-  out.textContent = ' · ' + acctLabel + ' · ' + dateLabel;
-}
-
 function renderAll() {
   renderDashboard();
   renderTransactions();
   renderCustomPresets();
-  updateFilterSummary();
   updateAIButton();
   // Show API key field and pre-fill if saved
   const keyWrap = document.getElementById('api-key-wrap');
