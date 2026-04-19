@@ -1,8 +1,10 @@
-const CACHE_NAME = 'cashtrack-v21';
+const CACHE_NAME = 'cashtrack-v22';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js'
 ];
 
