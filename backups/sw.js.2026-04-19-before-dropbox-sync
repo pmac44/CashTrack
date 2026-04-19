@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cashtrack-v20';
+const CACHE_NAME = 'cashtrack-v19';
 const ASSETS = [
   './',
   './index.html',
@@ -21,11 +21,8 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  const url = e.request.url;
-  // Network-only: Anthropic API and Dropbox (OAuth + file API)
-  if (url.includes('api.anthropic.com'))      return;
-  if (url.includes('dropboxapi.com'))         return;
-  if (url.includes('www.dropbox.com/oauth2')) return;
+  // Let API calls (Anthropic) go straight to network
+  if (e.request.url.includes('api.anthropic.com')) return;
 
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))

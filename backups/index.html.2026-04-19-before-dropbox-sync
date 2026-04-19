@@ -577,22 +577,6 @@
 
     <!-- Settings -->
     <div id="tab-settings" style="display:none">
-      <!-- ── Dropbox sync card ──────────────────────────────────────────── -->
-      <div class="card" style="max-width:720px;margin-bottom:16px">
-        <div class="card-label" style="margin-bottom:6px">Cloud sync (Dropbox)</div>
-        <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:14px">
-          Keep CashTrack in sync across your desktop and phone via Dropbox. Edits on one
-          device appear on the other within a few seconds. Only CashTrack's own data file
-          is touched — nothing else in your Dropbox.
-          <br><br>
-          <span style="color:var(--t2);font-size:12px">Sign in with Dropbox once on each device, then forget about it.</span>
-        </div>
-        <div id="dbx-status" style="font-family:monospace;font-size:12px;min-height:18px;margin-bottom:10px;color:var(--t2)"></div>
-        <div id="dbx-buttons" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <!-- filled in by renderSettingsTab -->
-        </div>
-      </div>
-
       <div class="card" style="max-width:720px">
         <div class="card-label" style="margin-bottom:6px">Import rules</div>
         <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:14px">
@@ -1000,7 +984,6 @@ function confirmAddRule(force) {
   if (!(existing && existing.cat === targetCat)) {
     state.overrideRules.push({ cat: targetCat, words: [kw] });
   }
-  state.overrideRulesModifiedAt = Date.now();
   scheduleSave();
   closeAddRuleDialog();
   // Brief confirmation in the sync-status area
@@ -1116,7 +1099,6 @@ function saveCashTransaction() {
     balance: null, // we don't track a running Wallet balance yet
     category: catId,
   };
-  touch(tx); // stamp modifiedAt so sync merge sees this as the newest version
   state.transactions.push(tx);
   // Sort newest first so the new row appears at top
   state.transactions.sort((a, b) => b.date - a.date);
@@ -1144,7 +1126,6 @@ function deleteTransaction(id) {
     + 'editing CashTrack.json if needed — it isn\'t permanently removed.';
   if (!confirm(msg)) return;
   tx.deleted = true;
-  touch(tx);
   scheduleSave();
   renderAll();
   updateSyncStatus('Transaction deleted');
@@ -1421,326 +1402,6 @@ function exportToFile() {
   URL.revokeObjectURL(url);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  DROPBOX SYNC
-// ═══════════════════════════════════════════════════════════════════════════
-// Adapted from the PackTimes implementation. Key differences for CashTrack:
-//   - Different Dropbox app key + redirect URI + file path (see constants).
-//   - On load, we MERGE cloud data into local state instead of replacing it,
-//     so parallel edits on two devices both survive.
-//   - Token is kept in localStorage so it persists across PWA launches.
-//
-// OAuth flow: user clicks Connect → redirected to dropbox.com to approve →
-// Dropbox redirects back to DBX_REDIRECT with ?code=… → dbxHandleRedirect()
-// exchanges the code for an access token + refresh token.
-const DBX_APP_KEY  = 'ih5w4qwb2hi1rvm';
-const DBX_REDIRECT = 'https://pmac44.github.io/CashTrack/';
-const DBX_FILE     = '/CashTrack.json';
-let _dbxSaveTimer = null;
-
-// ── token + timestamp persistence (localStorage) ──────────────────────────
-function dbxGetToken()        { try { return localStorage.getItem('ct_dbx_token')   || null; } catch { return null; } }
-function dbxSetToken(t)       { try { t ? localStorage.setItem('ct_dbx_token', t)   : localStorage.removeItem('ct_dbx_token'); } catch {} }
-function dbxGetRefresh()      { try { return localStorage.getItem('ct_dbx_refresh') || null; } catch { return null; } }
-function dbxSetRefresh(t)     { try { t ? localStorage.setItem('ct_dbx_refresh', t) : localStorage.removeItem('ct_dbx_refresh'); } catch {} }
-function dbxGetSavedAt()      { try { return +(localStorage.getItem('ct_dbx_savedAt') || 0); } catch { return 0; } }
-function dbxSetSavedAt(ms)    { try { localStorage.setItem('ct_dbx_savedAt', String(ms)); } catch {} }
-
-function dbxIsConnected() { return !!dbxGetToken(); }
-
-function dbxSetStatus(msg, isErr) {
-  const el = document.getElementById('dbx-status');
-  if (el) { el.textContent = msg; el.style.color = isErr ? 'var(--red)' : 'var(--t2)'; }
-  // Also reflect in the header sync-status area for visibility
-  if (msg && !isErr) updateSyncStatus(msg);
-}
-
-// ── OAuth (PKCE) ──────────────────────────────────────────────────────────
-function dbxAuthURL() {
-  const verifier = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
-  sessionStorage.setItem('dbx_verifier', verifier);
-  const stateVal = Math.random().toString(36).slice(2);
-  sessionStorage.setItem('dbx_state', stateVal);
-  return 'https://www.dropbox.com/oauth2/authorize?' + new URLSearchParams({
-    client_id: DBX_APP_KEY,
-    redirect_uri: DBX_REDIRECT,
-    response_type: 'code',
-    state: stateVal,
-    code_challenge_method: 'plain',
-    code_challenge: verifier,
-    token_access_type: 'offline',
-  });
-}
-
-async function dbxHandleRedirect() {
-  const params = new URLSearchParams(window.location.search);
-  const code   = params.get('code');
-  const stateQ = params.get('state');
-  if (!code) return;
-  // Clean ?code=… out of the address bar so reloads don't retry auth
-  history.replaceState(null, '', window.location.pathname);
-  if (stateQ !== sessionStorage.getItem('dbx_state')) {
-    dbxSetStatus('Dropbox auth failed: state mismatch', true);
-    return;
-  }
-  const verifier = sessionStorage.getItem('dbx_verifier');
-  sessionStorage.removeItem('dbx_state');
-  sessionStorage.removeItem('dbx_verifier');
-  try {
-    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code, grant_type: 'authorization_code',
-        client_id: DBX_APP_KEY, redirect_uri: DBX_REDIRECT,
-        code_verifier: verifier,
-      }),
-    });
-    const data = await res.json();
-    if (data.access_token) {
-      dbxSetToken(data.access_token);
-      if (data.refresh_token) dbxSetRefresh(data.refresh_token);
-      dbxSetStatus('✓ Connected to Dropbox');
-      // Refresh any UI that cares about the connected state
-      if (document.getElementById('tab-settings').style.display !== 'none') renderSettingsTab();
-      // First thing after connecting: pull cloud state and merge
-      await dbxLoad(true);
-    } else {
-      dbxSetStatus('Dropbox auth failed: ' + (data.error_description || data.error || 'unknown'), true);
-    }
-  } catch (e) {
-    dbxSetStatus('Dropbox auth error: ' + e.message, true);
-  }
-}
-
-function dbxConnect() {
-  // Only works when served from the real redirect URL — warn if not
-  if (location.origin + location.pathname !== DBX_REDIRECT && !DBX_REDIRECT.startsWith(location.origin + location.pathname)) {
-    if (!confirm('Dropbox OAuth only works when the app is opened from\n  ' + DBX_REDIRECT + '\nYou are on:\n  ' + location.href + '\n\nContinue anyway?')) return;
-  }
-  window.location.href = dbxAuthURL();
-}
-
-function dbxDisconnect() {
-  if (!confirm('Disconnect Dropbox? Local data stays on this device.')) return;
-  dbxSetToken(null);
-  dbxSetRefresh(null);
-  dbxSetSavedAt(0);
-  dbxSetStatus('Disconnected');
-  renderSettingsTab();
-}
-
-// ── Save + load ───────────────────────────────────────────────────────────
-function dbxScheduleSave() {
-  if (!dbxIsConnected()) return;
-  if (_dbxSaveTimer) clearTimeout(_dbxSaveTimer);
-  _dbxSaveTimer = setTimeout(() => { _dbxSaveTimer = null; dbxSave(true); }, 5000);
-}
-
-async function dbxSave(auto) {
-  if (!dbxIsConnected()) return;
-  if (!auto) dbxSetStatus('Saving to Dropbox…');
-  try {
-    const now = Date.now();
-    const body = makeJSON();
-    const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + dbxGetToken(),
-        'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE, mode: 'overwrite', autorename: false }),
-        'Content-Type': 'application/octet-stream',
-      },
-      body,
-    });
-    if (res.ok) {
-      const meta = await res.json().catch(() => null);
-      const serverMs = meta && meta.server_modified ? new Date(meta.server_modified).getTime() : now;
-      dbxSetSavedAt(Math.max(now, serverMs));
-      dbxSetStatus('☁ Synced — ' + new Date(now).toLocaleTimeString());
-      // Refresh "Last sync" label if Settings tab is open
-      const tabS = document.getElementById('tab-settings');
-      if (tabS && tabS.style.display !== 'none') renderSettingsTab();
-    } else if (res.status === 401) {
-      dbxSetToken(null);
-      dbxSetStatus('Dropbox session expired — reconnect', true);
-      renderSettingsTab();
-    } else {
-      const err = await res.text().catch(() => '');
-      dbxSetStatus('Dropbox save failed: ' + res.status + (err ? ' — ' + err.slice(0, 120) : ''), true);
-    }
-  } catch (e) {
-    dbxSetStatus('Dropbox save error: ' + e.message, true);
-  }
-}
-
-async function dbxLoad(force) {
-  if (!dbxIsConnected()) return;
-  if (!force) dbxSetStatus('Checking Dropbox…');
-  try {
-    const res = await fetch('https://content.dropboxapi.com/2/files/download', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + dbxGetToken(),
-        'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }),
-      },
-    });
-    if (res.status === 409) { dbxSetStatus('☁ Connected — no cloud file yet (first save will create it)'); return; }
-    if (res.status === 401) { dbxSetToken(null); dbxSetStatus('Dropbox session expired — reconnect', true); renderSettingsTab(); return; }
-    if (!res.ok) { dbxSetStatus('Dropbox load failed: ' + res.status, true); return; }
-    const cloud = await res.json();
-    if (!cloud || typeof cloud !== 'object') { dbxSetStatus('Invalid Dropbox file.', true); return; }
-
-    // Merge cloud into local state. This is the key difference from PackTimes:
-    // we never blindly replace — we combine and let the newer modifiedAt win.
-    const stats = mergeCloudState(cloud);
-
-    // Mark that we've incorporated this cloud version
-    const serverMs = res.headers.get('dropbox-api-result');
-    let cloudMs = 0;
-    try { cloudMs = serverMs ? new Date(JSON.parse(serverMs).server_modified).getTime() : Date.now(); } catch { cloudMs = Date.now(); }
-    dbxSetSavedAt(cloudMs);
-
-    // Persist merged state to IDB; do NOT trigger dbxScheduleSave here or we'd
-    // ping-pong with the other device. A user edit will re-trigger normally.
-    await saveToIDB();
-    populateAccountFilters();
-    populateCategoryFilter();
-    renderCatList();
-    renderAll();
-    if (stats.added || stats.updated || stats.deletedFromCloud) {
-      dbxSetStatus('✓ Merged cloud — ' + stats.added + ' new, ' + stats.updated + ' updated');
-    } else {
-      dbxSetStatus('✓ Up to date');
-    }
-  } catch (e) {
-    dbxSetStatus('Dropbox load error: ' + e.message, true);
-  }
-}
-
-// ── Merge cloud JSON into local state ─────────────────────────────────────
-// Strategy, per record type:
-//   Transactions: union by id. For matching ids, newer modifiedAt wins.
-//     deleted=true always wins (never resurrect).
-//   Categories: union by id. Newer modifiedAt wins.
-//   Custom presets: union by id (no modifiedAt yet — keep local if both exist).
-//   Override rules: last-write-wins on the whole block using overrideRulesModifiedAt.
-function mergeCloudState(cloud) {
-  let added = 0, updated = 0, deletedFromCloud = 0;
-
-  // -- Transactions --
-  if (Array.isArray(cloud.transactions)) {
-    const byId = new Map();
-    for (const t of state.transactions) byId.set(t.id, t);
-    for (const ct of cloud.transactions) {
-      const cloudTx = { ...ct, date: new Date(ct.date), modifiedAt: ct.modifiedAt || 0 };
-      const local = byId.get(ct.id);
-      if (!local) {
-        state.transactions.push(cloudTx);
-        byId.set(ct.id, cloudTx);
-        added++;
-        if (cloudTx.deleted) deletedFromCloud++;
-      } else {
-        const localMs = local.modifiedAt || 0;
-        const cloudMs = cloudTx.modifiedAt || 0;
-        // Deleted wins over undeleted regardless of time (never resurrect)
-        if (cloudTx.deleted && !local.deleted) {
-          local.deleted = true;
-          local.modifiedAt = Math.max(localMs, cloudMs);
-          updated++;
-          deletedFromCloud++;
-        } else if (cloudMs > localMs) {
-          Object.assign(local, cloudTx);
-          updated++;
-        }
-      }
-    }
-    state.transactions.sort((a, b) => b.date - a.date);
-  }
-
-  // -- Categories --
-  if (Array.isArray(cloud.categories)) {
-    const byId = new Map();
-    for (const c of CATS) byId.set(c.id, c);
-    for (const cc of cloud.categories) {
-      const cloudCat = { ...cc, modifiedAt: cc.modifiedAt || 0 };
-      const local = byId.get(cc.id);
-      if (!local) {
-        CATS.push(cloudCat);
-        CAT_MAP[cloudCat.id] = cloudCat;
-        byId.set(cloudCat.id, cloudCat);
-      } else if ((cloudCat.modifiedAt || 0) > (local.modifiedAt || 0)) {
-        Object.assign(local, cloudCat);
-      }
-    }
-    // Rebuild RULES from category keywords (kept consistent with loadFromJSON)
-    RULES.length = 0;
-    for (const c of CATS) {
-      if (c.keywords && c.keywords.length) RULES.push({ cat: c.id, words: c.keywords });
-    }
-  }
-
-  // -- Custom presets (union by id, local wins on conflict) --
-  if (Array.isArray(cloud.customPresets)) {
-    const have = new Set((state.customPresets || []).map(p => p.id));
-    for (const cp of cloud.customPresets) {
-      if (!have.has(cp.id)) {
-        (state.customPresets = state.customPresets || []).push({
-          id: cp.id, name: cp.name, from: cp.from, to: cp.to,
-        });
-      }
-    }
-  }
-
-  // -- Override rules: last-write-wins on the whole block --
-  const cloudRulesMs = cloud.overrideRulesModifiedAt || 0;
-  const localRulesMs = state.overrideRulesModifiedAt || 0;
-  if (Array.isArray(cloud.overrideRules) && cloudRulesMs > localRulesMs) {
-    state.overrideRules = cloud.overrideRules.map(r => ({
-      cat: r.cat,
-      words: Array.isArray(r.words) ? r.words.slice() : [],
-    }));
-    state.overrideRulesModifiedAt = cloudRulesMs;
-  }
-
-  return { added, updated, deletedFromCloud };
-}
-
-// ── Focus check: metadata-only fetch, show banner if cloud is newer ──────
-async function dbxCheckOnFocus() {
-  if (!dbxIsConnected()) return;
-  try {
-    const res = await fetch('https://api.dropboxapi.com/2/files/get_metadata', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + dbxGetToken(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ path: DBX_FILE }),
-    });
-    if (res.status === 401) { dbxSetToken(null); renderSettingsTab(); return; }
-    if (res.status === 409) return; // no cloud file yet
-    if (!res.ok) return;
-    const meta = await res.json();
-    const cloudMs = meta.server_modified ? new Date(meta.server_modified).getTime() : 0;
-    const localMs = dbxGetSavedAt();
-    if (cloudMs > localMs + 2000) {
-      // Auto-merge without bothering the user — merge is safe (union + modifiedAt)
-      await dbxLoad(true);
-    }
-  } catch { /* silent */ }
-}
-
-// Fire the OAuth redirect handler + focus check after DOM is ready
-window.addEventListener('load', () => {
-  // OAuth redirect: only runs if ?code= is present in URL
-  if (new URLSearchParams(window.location.search).get('code')) dbxHandleRedirect();
-  // Periodic focus checks
-  window.addEventListener('focus', () => dbxCheckOnFocus());
-  // Also on startup, a single check
-  setTimeout(() => dbxCheckOnFocus(), 2000);
-});
-
 function scheduleSave() {
   state.dirty = true;
   clearTimeout(saveTimeout);
@@ -1748,13 +1409,7 @@ function scheduleSave() {
   saveToIDB();
   updateSyncStatus('Saving…');
   saveTimeout = setTimeout(() => saveData(), 2000); // auto-save after 2s idle
-  // If Dropbox is connected, also schedule a cloud upload (its own debounce)
-  if (typeof dbxScheduleSave === 'function') dbxScheduleSave();
 }
-
-// Stamp a record so the merge function can pick the newer version during sync.
-// Call this at every mutation site (category change, note edit, delete, etc).
-function touch(obj) { if (obj) obj.modifiedAt = Date.now(); return obj; }
 
 // ══ Data serialisation ════════════════════════════════════════════════════════
 
@@ -1771,16 +1426,11 @@ function makeJSON() {
       cat: r.cat,
       words: (r.words || []).slice(),
     })),
-    // Whole-block last-write-wins timestamp for rules. Rules are edited rarely,
-    // so per-rule merge isn't worth the complexity. When two devices edit rules
-    // in parallel, the newer block wins.
-    overrideRulesModifiedAt: state.overrideRulesModifiedAt || 0,
     categories: CATS.map(cat => ({
       id: cat.id,
       label: cat.label,
       color: cat.color,
       keywords: cat.keywords || [],
-      modifiedAt: cat.modifiedAt || 0,
     })),
     transactions: state.transactions.map(t => ({
       id: t.id,
@@ -1798,10 +1448,6 @@ function makeJSON() {
       // Soft-delete flag: keeps record so re-imports can't resurrect it,
       // but hides it from every view via applyGlobalFilters.
       deleted: !!t.deleted,
-      // Last-modified timestamp (ms since epoch). Used by the merge function
-      // to pick the winner when the same id exists on two devices. Backfilled
-      // on load if missing so older data files keep working.
-      modifiedAt: t.modifiedAt || 0,
     })),
   }, null, 2);
 }
@@ -1813,8 +1459,6 @@ function loadFromJSON(obj) {
     CATS.length = 0;
     Object.keys(CAT_MAP).forEach(k => delete CAT_MAP[k]);
     for (const cat of obj.categories) {
-      // Backfill modifiedAt on older data files (pre-sync era)
-      if (!cat.modifiedAt) cat.modifiedAt = 0;
       CATS.push(cat);
       CAT_MAP[cat.id] = cat;
     }
@@ -1829,12 +1473,7 @@ function loadFromJSON(obj) {
   state.transactions = (obj.transactions || []).map(t => ({
     ...t,
     date: new Date(t.date),
-    // Backfill modifiedAt on older data files. 0 means "as old as it gets",
-    // so any touch from a device running the new code wins.
-    modifiedAt: t.modifiedAt || 0,
   }));
-  // Whole-block rules timestamp (0 if missing; any edit wins over the old data)
-  state.overrideRulesModifiedAt = obj.overrideRulesModifiedAt || 0;
   state.customPresets = (obj.customPresets || []).map(p => ({
     id: p.id, name: p.name, from: p.from, to: p.to,
   }));
@@ -1963,7 +1602,6 @@ function importCSV(text) {
       account: row.account || 'Unknown account',
       balance: row.balance,
       category: cat,
-      modifiedAt: Date.now(), // stamp for sync merge
     });
     added++;
   }
@@ -2067,12 +1705,8 @@ function deleteSelectedDupes() {
   if (checked.length === 0) return;
   if (!confirm(`Remove ${checked.length} transaction${checked.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
 
-  // Soft-delete so re-imports can't silently resurrect these, and so the
-  // sync merge on the other device sees the deletes.
   const removeSet = new Set(checked);
-  for (const t of state.transactions) {
-    if (removeSet.has(t.id)) { t.deleted = true; touch(t); }
-  }
+  state.transactions = state.transactions.filter(t => !removeSet.has(t.id));
   scheduleSave();
   renderAll();
   closeDupes();
@@ -2359,7 +1993,6 @@ function applyAIReview() {
   for (const s of aiReviewSuggestions) {
     if (s.accepted && s.isChange) {
       s.tx.category = s.suggestedCat;
-      touch(s.tx);
       count++;
     }
   }
@@ -2597,7 +2230,6 @@ function renderTransactions() {
         quickAddCategory(name => {
           if (name) {
             tx.category = name;
-            touch(tx);
             // Rebuild this select with new category
             const newCat = CAT_MAP[name] || CAT_MAP.other;
             sel.style.color = newCat.color;
@@ -2617,7 +2249,6 @@ function renderTransactions() {
         return;
       }
       tx.category = sel.value;
-      touch(tx);
       const newCat = CAT_MAP[tx.category] || CAT_MAP.other;
       sel.style.color = newCat.color;
       sel.style.borderColor = newCat.color + '55';
@@ -2638,7 +2269,6 @@ function renderTransactions() {
       noteInput.style.borderBottomColor = 'transparent';
       if (noteInput.value !== (tx.note || '')) {
         tx.note = noteInput.value;
-        touch(tx);
         scheduleSave();
       }
     };
@@ -3325,7 +2955,7 @@ function quickAddCategory(callback) {
   const usedColors = new Set(CATS.map(c => c.color));
   const color = SWATCH_COLOURS.find(col => !usedColors.has(col)) || SWATCH_COLOURS[0];
   const id = 'custom_' + Date.now();
-  const newCat = { id, label, color, keywords: [], modifiedAt: Date.now() };
+  const newCat = { id, label, color, keywords: [] };
   CATS.push(newCat);
   CAT_MAP[id] = newCat;
   saveCatsToStorage();
@@ -3422,7 +3052,6 @@ function saveCategoryEdit() {
     cat.label = name;
     cat.color = color;
     cat.keywords = keywords;
-    touch(cat);
     // Update RULES entry
     const ruleIdx = RULES.findIndex(r => r.cat === catEditingId);
     if (ruleIdx >= 0) RULES[ruleIdx].words = keywords;
@@ -3430,7 +3059,7 @@ function saveCategoryEdit() {
   } else {
     // New category
     const id = 'custom_' + Date.now();
-    const newCat = { id, label: name, color, keywords, modifiedAt: Date.now() };
+    const newCat = { id, label: name, color, keywords };
     CATS.push(newCat);
     CAT_MAP[id] = newCat;
     if (keywords.length) RULES.push({ cat: id, words: keywords });
@@ -3448,9 +3077,9 @@ function deleteCategory() {
   const cat = CAT_MAP[catEditingId];
   const count = state.transactions.filter(t => t.category === catEditingId).length;
   if (count > 0 && !confirm(`Reassign ${count} "${cat.label}" transactions to Other and delete this category?`)) return;
-  // Reassign transactions and stamp for sync
+  // Reassign transactions
   for (const tx of state.transactions) {
-    if (tx.category === catEditingId) { tx.category = 'other'; touch(tx); }
+    if (tx.category === catEditingId) tx.category = 'other';
   }
   // Remove from CATS and CAT_MAP
   const idx = CATS.findIndex(c => c.id === catEditingId);
@@ -3519,7 +3148,7 @@ function showTab(name) {
   if (name === 'settings')   renderSettingsTab();
 }
 
-// ── Settings tab: rules text box + Dropbox sync ──────────────────────────────
+// ── Settings tab: rules text box ─────────────────────────────────────────────
 function renderSettingsTab() {
   const ta = document.getElementById('rules-textarea');
   if (ta) ta.value = rulesToText(state.overrideRules || []);
@@ -3527,28 +3156,6 @@ function renderSettingsTab() {
   if (status) status.textContent = '';
   const catsEl = document.getElementById('rules-valid-cats');
   if (catsEl) catsEl.textContent = CATS.map(c => c.label || c.id).join(', ');
-
-  // Dropbox card
-  const btns = document.getElementById('dbx-buttons');
-  const statEl = document.getElementById('dbx-status');
-  if (btns) {
-    const connected = (typeof dbxIsConnected === 'function') && dbxIsConnected();
-    if (connected) {
-      const savedAt = dbxGetSavedAt();
-      const when = savedAt ? new Date(savedAt).toLocaleString() : 'not yet synced';
-      btns.innerHTML = ''
-        + '<button class="btn-primary" onclick="dbxSave(false)" style="padding:9px 18px">Sync now</button>'
-        + '<button class="btn-sm" onclick="dbxLoad(true)" style="padding:9px 14px">Pull from cloud</button>'
-        + '<button class="btn-sm" onclick="dbxDisconnect()" style="padding:9px 14px">Disconnect</button>'
-        + '<span style="flex:1"></span>'
-        + '<span style="font-family:monospace;font-size:11px;color:var(--t2)">Last sync: ' + when + '</span>';
-      if (statEl && !statEl.textContent) { statEl.textContent = '☁ Connected'; statEl.style.color = 'var(--grn)'; }
-    } else {
-      btns.innerHTML = '<button class="btn-primary" onclick="dbxConnect()" style="padding:9px 20px">Connect Dropbox</button>'
-        + '<span style="font-family:monospace;font-size:11px;color:var(--t2);margin-left:6px">You\'ll be redirected to Dropbox to sign in.</span>';
-      if (statEl && !statEl.textContent) { statEl.textContent = 'Not connected'; statEl.style.color = 'var(--t2)'; }
-    }
-  }
 }
 
 function saveRulesFromSettings() {
@@ -3562,7 +3169,6 @@ function saveRulesFromSettings() {
     return;
   }
   state.overrideRules = rules;
-  state.overrideRulesModifiedAt = Date.now();
   scheduleSave();
   status.innerHTML = `<span style="color:var(--grn)">Saved ${rules.length} rule${rules.length === 1 ? '' : 's'} ✓</span>`;
   setTimeout(() => { if (status.textContent.startsWith('Saved')) status.textContent = ''; }, 3000);
