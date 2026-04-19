@@ -134,7 +134,7 @@
   /* ── Category breakdown table ── */
   .cat-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 50px 100px 60px;
+    grid-template-columns: 1fr 50px 100px 60px;
     gap: 4px 10px; align-items: center;
   }
   .cat-grid-hdr { font-family: monospace; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--t2); padding-bottom: 8px; }
@@ -152,22 +152,13 @@
   .cat-chev { display: inline-block; width: 10px; font-size: 10px; color: var(--t2); transition: transform 0.15s; }
   .cat-row.expanded .cat-chev { transform: rotate(90deg); }
   .cat-expand { grid-column: 1 / -1; padding: 6px 6px 10px 22px; font-size: 12px; }
-  /* Grid mirrors the parent .cat-grid (minus the 22px left indent): date+desc in col 1,
-     note in col 2 (under the "Description" header), blank cols for Txns/Total, amount on right. */
-  .cat-expand-row { display: grid; grid-template-columns: 1fr 1fr 50px 100px 60px; gap: 4px 10px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: baseline; }
+  .cat-expand-row { display: grid; grid-template-columns: 60px 1fr auto; gap: 10px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: baseline; }
   .cat-expand-row:last-child { border-bottom: none; }
-  .cat-expand-row .dt-dsc { display: flex; gap: 10px; align-items: baseline; overflow: hidden; }
-  .cat-expand-row .dt   { font-family: monospace; font-size: 11px; color: var(--t2); flex-shrink: 0; }
+  .cat-expand-row .dt   { font-family: monospace; font-size: 11px; color: var(--t2); }
   .cat-expand-row .dsc  { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cat-expand-row .note { font-size: 12px; color: var(--t2); font-style: italic;
+  .cat-expand-row .note { font-size: 11px; color: var(--t2); font-style: italic; margin-top: 2px;
                           white-space: normal; word-break: break-word; line-height: 1.3; }
-  .cat-expand-row .amt  { font-family: monospace; font-size: 12px; font-weight: 600; text-align: right; grid-column: 5; }
-  /* Mobile fallback: below ~600px, collapse to 2-col layout with note under description. */
-  @media (max-width: 600px) {
-    .cat-expand-row { grid-template-columns: 1fr auto; }
-    .cat-expand-row .note { grid-column: 1; }
-    .cat-expand-row .amt { grid-column: 2; grid-row: 1; }
-  }
+  .cat-expand-row .amt  { font-family: monospace; font-size: 12px; font-weight: 600; text-align: right; }
   .cat-expand .see-all  { display: inline-block; margin-top: 6px; font-family: monospace; font-size: 11px; color: var(--acc); text-decoration: none; cursor: pointer; }
   .cat-expand .see-all:hover { text-decoration: underline; }
   .cat-expand .empty    { font-style: italic; color: var(--t2); font-size: 11px; padding: 4px 0; }
@@ -527,7 +518,6 @@
         <div class="card-label" style="margin-bottom:14px">Category Breakdown</div>
         <div class="cat-grid" id="cat-table">
           <div class="cat-grid-hdr">Category</div>
-          <div class="cat-grid-hdr">Description</div>
           <div class="cat-grid-hdr" style="text-align:right">Txns</div>
           <div class="cat-grid-hdr" style="text-align:right">Total</div>
           <div class="cat-grid-hdr" style="text-align:right">% Spend</div>
@@ -2576,8 +2566,8 @@ function renderDashboard() {
 
   // Category table (expandable rows)
   const table = document.getElementById('cat-table');
-  // Remove old rows (keep 5 headers: Category, Description, Txns, Total, % Spend)
-  while (table.children.length > 5) table.removeChild(table.lastChild);
+  // Remove old rows (keep 4 headers)
+  while (table.children.length > 4) table.removeChild(table.lastChild);
   if (!s.catData.length) return;
   const totalSpend = s.expenses;
   // Remember which category is expanded across re-renders
@@ -2589,20 +2579,19 @@ function renderDashboard() {
 
     const dot = document.createElement('div'); dot.className = 'cat-name cat-row';
     dot.innerHTML = `<span class="cat-chev">▸</span><div class="cat-dot" style="background:${c.color}"></div><span>${escHtml(c.label)}</span>`;
-    const desc = document.createElement('div'); desc.className = 'cat-desc cat-row'; // blank placeholder on category rows
     const num = document.createElement('div'); num.className = 'cat-num cat-row'; num.textContent = count;
     const amt = document.createElement('div'); amt.className = 'cat-amt cat-row'; amt.style.color = c.color; amt.textContent = fmt(c.total);
     const pc  = document.createElement('div'); pc.className = 'cat-pct cat-row'; pc.textContent = pct + '%';
 
-    // Click any of the 5 cells toggles expansion for this category
+    // Click any of the 4 cells toggles expansion for this category
     const toggle = () => toggleDashCatExpand(c.id);
-    for (const cell of [dot, desc, num, amt, pc]) cell.addEventListener('click', toggle);
+    for (const cell of [dot, num, amt, pc]) cell.addEventListener('click', toggle);
 
-    table.append(dot, desc, num, amt, pc);
+    table.append(dot, num, amt, pc);
 
     // If this category is the currently-expanded one, inject the expansion block.
     if (window._dashExpandedCat === c.id) {
-      for (const cell of [dot, desc, num, amt, pc]) cell.classList.add('expanded');
+      for (const cell of [dot, num, amt, pc]) cell.classList.add('expanded');
       const exp = buildCatExpansion(c.id);
       table.append(exp);
     }
@@ -2629,12 +2618,15 @@ function buildCatExpansion(catId) {
     const row = document.createElement('div');
     row.className = 'cat-expand-row';
     const amtColor = t.amount >= 0 ? 'var(--grn)' : 'var(--red)';
+    const noteHtml = t.note
+      ? `<div class="note">${escHtml(t.note)}</div>`
+      : '';
     row.innerHTML = `
-      <div class="dt-dsc">
-        <div class="dt">${escHtml(t.dateStr || '')}</div>
+      <div class="dt">${escHtml(t.dateStr || '')}</div>
+      <div>
         <div class="dsc" title="${escHtml(t.rawDetails || t.description || '')}">${escHtml(t.description || '')}</div>
+        ${noteHtml}
       </div>
-      <div class="note">${t.note ? escHtml(t.note) : ''}</div>
       <div class="amt" style="color:${amtColor}">${fmt(t.amount)}</div>
     `;
     wrap.appendChild(row);
