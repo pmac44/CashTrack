@@ -270,27 +270,10 @@
     .chart-card { flex: 1 1 auto; }
     .chart-card canvas { max-height: 200px; }
 
-    /* Category breakdown — hide the Description column on mobile (it's empty on
-       category summary rows; individual transaction descriptions still show inside
-       the expanded block). This drops the grid from 5 columns to 4 so cells align. */
+    /* Category breakdown */
     .cat-grid { grid-template-columns: 1fr 35px 70px 45px; gap: 3px 4px; font-size: 11px; }
     .cat-grid-hdr { font-size: 9px; letter-spacing: 0.5px; }
     .cat-name span { font-size: 12px; }
-    /* Hide the 2nd header ("Description") and the per-row blank .cat-desc cell. */
-    .cat-grid .cat-grid-hdr:nth-child(2) { display: none; }
-    .cat-grid .cat-desc { display: none; }
-    /* Expanded category rows: stack date+description on row 1, amount right-aligned,
-       note wraps full-width on row 2. Overrides the old 600px rule which predated
-       the 3-child layout (.dt-dsc, .note, .amt). */
-    .cat-expand { padding-left: 12px; }
-    .cat-expand-row {
-      grid-template-columns: 1fr auto;
-      row-gap: 2px;
-    }
-    .cat-expand-row .dt-dsc { grid-column: 1; grid-row: 1; min-width: 0; }
-    .cat-expand-row .dsc { white-space: normal; }
-    .cat-expand-row .amt { grid-column: 2; grid-row: 1; }
-    .cat-expand-row .note { grid-column: 1 / span 2; grid-row: 2; padding-left: 0; }
 
     /* ── Transaction table: stacked-card rows on mobile ──
        Each <tr> becomes a two-column grid card. Cells are positioned by class.
