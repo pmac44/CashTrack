@@ -245,45 +245,15 @@
     .cat-grid-hdr { font-size: 9px; letter-spacing: 0.5px; }
     .cat-name span { font-size: 12px; }
 
-    /* ── Transaction table: stacked-card rows on mobile ──
-       Each <tr> becomes a two-column grid card. Cells are positioned by class.
-       Hides the <thead> since the cards are self-describing. */
-    .card:has(> table) { overflow-x: visible !important; }
-    table { font-size: 12px; min-width: 0 !important; }
-    thead { display: none; }
-    tbody { display: block; }
-    tbody tr {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      column-gap: 10px;
-      row-gap: 4px;
-      padding: 10px 8px;
-      border-top: 1px solid var(--brd);
-    }
-    tbody tr:hover { background: transparent; }
-    tbody td { display: block; padding: 0; border: none; }
-    td.date-col   { grid-column: 1; grid-row: 1; font-size: 11px; }
-    td.amt-col    { grid-column: 2; grid-row: 1; font-size: 14px; font-weight: 700; }
-    td.desc-col   { grid-column: 1 / span 2; grid-row: 2;
-                    max-width: none; white-space: normal; overflow: visible;
-                    text-overflow: clip; font-size: 13px; line-height: 1.35;
-                    word-break: break-word; }
-    td.desc-col > div { white-space: normal !important; overflow: visible !important;
-                        text-overflow: clip !important; }
-    td.cat-col    { grid-column: 1 / span 2; grid-row: 3;
-                    white-space: normal; display: flex; flex-wrap: wrap;
-                    gap: 6px; align-items: center; }
-    td.note-col   { grid-column: 1 / span 2; grid-row: 4; max-width: none; }
-    td.note-col input { width: 100% !important; font-size: 13px !important; }
-    .cat-select { font-size: 12px; padding: 4px 22px 4px 10px; }
-    /* Always show the ✕ delete button on mobile (override JS opacity) */
-    td.amt-col button {
-      opacity: 1 !important;
-      padding: 4px 10px !important;
-      font-size: 14px !important;
-      border-color: rgba(248,113,113,0.35) !important;
-      color: var(--red) !important;
-    }
+    /* Transaction table */
+    table { font-size: 12px; }
+    td { padding: 6px 3px; }
+    td.desc-col { max-width: 120px; font-size: 11px; }
+    td.note-col { display: none; }
+    td.date-col { font-size: 10px; }
+    td.amt-col { font-size: 11px; }
+    .cat-select { font-size: 10px; padding: 2px 18px 2px 5px; }
+    thead th { font-size: 9px; padding: 0 3px 8px; }
 
     /* Transaction filters */
     .filters { padding: 8px; gap: 6px; }
@@ -2700,11 +2670,9 @@ function renderTransactions() {
     delBtn.onclick = () => deleteTransaction(tx.id);
     tr.onmouseenter = () => { delBtn.style.opacity = '1'; };
     tr.onmouseleave = () => { delBtn.style.opacity = '0'; };
-    // Phones don't fire mouseenter — keep the button fully visible so it's tappable.
+    // Phones don't fire mouseenter — keep the button faintly visible so it's tappable.
     if (window.matchMedia && window.matchMedia('(hover: none)').matches) {
-      delBtn.style.opacity = '1';
-      delBtn.style.color = 'var(--red)';
-      delBtn.style.borderColor = 'rgba(248,113,113,0.35)';
+      delBtn.style.opacity = '0.6';
     }
     tr.cells[4].appendChild(delBtn);
 
