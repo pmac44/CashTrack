@@ -1615,19 +1615,7 @@ async function dbxLoad(force) {
         'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }),
       },
     });
-    if (res.status === 409) {
-      // No cloud file yet — this is the first device to connect to this Dropbox app.
-      // If we have local data, seed the cloud with it immediately so whoever
-      // connects next pulls something real (not empty).
-      const hasLocalData = Array.isArray(state.transactions) && state.transactions.length > 0;
-      if (hasLocalData) {
-        dbxSetStatus('☁ Connected — seeding cloud file with local data…');
-        await dbxSave(false);
-      } else {
-        dbxSetStatus('☁ Connected — no cloud file yet, and nothing local to push');
-      }
-      return;
-    }
+    if (res.status === 409) { dbxSetStatus('☁ Connected — no cloud file yet (first save will create it)'); return; }
     if (res.status === 401) { dbxSetToken(null); dbxSetStatus('Dropbox session expired — reconnect', true); renderSettingsTab(); return; }
     if (!res.ok) { dbxSetStatus('Dropbox load failed: ' + res.status, true); return; }
     const cloud = await res.json();
@@ -3031,41 +3019,6 @@ async function initStartScreen() {
 
   // Check IDB for cached data (works on all browsers)
   const idbData = await loadFromIDB();
-
-  // If Dropbox is connected AND we have no useful local data AND this isn't an
-  // OAuth return (which dbxHandleRedirect will handle), auto-pull from cloud.
-  // This restores the app after a pull-to-refresh or cold launch without
-  // forcing the user back through the start screen.
-  const isOAuthReturn = !!new URLSearchParams(window.location.search).get('code');
-  const hasIdbData = idbData && Array.isArray(idbData.transactions) && idbData.transactions.length > 0;
-  const hasFileHandle = hasFileSystemAPI && (await loadHandleFromIDB().catch(() => null));
-  if (!isOAuthReturn && !hasIdbData && !hasFileHandle && typeof dbxIsConnected === 'function' && dbxIsConnected()) {
-    // Show a minimal "loading from cloud" message on the start screen so the
-    // user knows what's happening; bypass the Open/Start-fresh buttons entirely.
-    const ss = document.getElementById('start-screen');
-    if (ss) {
-      const msg = document.createElement('div');
-      msg.id = 'auto-pull-msg';
-      msg.style.cssText = 'font-family:monospace;font-size:13px;color:var(--t2);margin-top:16px;text-align:center';
-      msg.textContent = '☁ Restoring from Dropbox…';
-      ss.appendChild(msg);
-      if (btnDiv) btnDiv.style.display = 'none';
-      if (contDiv) contDiv.style.display = 'none';
-    }
-    try {
-      await dbxLoad(true);
-      if (Array.isArray(state.transactions) && state.transactions.length > 0) {
-        showApp();
-        return;
-      }
-    } catch (e) {
-      // Fall through to normal start screen on any error
-    }
-    // If pull returned empty, remove the message and let the user choose
-    const autoMsg = document.getElementById('auto-pull-msg');
-    if (autoMsg) autoMsg.remove();
-    if (btnDiv) btnDiv.style.display = '';
-  }
 
   if (hasFileSystemAPI) {
     // Desktop Chrome path — try file handle first
