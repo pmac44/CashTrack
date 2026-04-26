@@ -236,39 +236,6 @@
      header room for all the buttons. */
   #btn-mobile-extras { display: none; }
 
-  /* Collapsible cards (used inside Settings tab on both platforms). */
-  .collapse-card {
-    max-width: 720px; margin-bottom: 16px;
-    background: var(--bg2); border: 1px solid var(--brd);
-    border-radius: 12px; overflow: hidden;
-  }
-  .collapse-header {
-    width: 100%; padding: 14px 18px;
-    background: none; border: none; color: var(--txt);
-    font-size: 14px; font-weight: 700; text-align: left;
-    display: flex; align-items: center; gap: 12px;
-    cursor: pointer; font-family: Georgia, serif;
-    border-bottom: 1px solid var(--brd);
-  }
-  .collapse-card:not(.open) .collapse-header { border-bottom-color: transparent; }
-  .collapse-header .chev {
-    margin-left: auto; color: var(--t2);
-    font-family: monospace; font-size: 13px;
-    transition: transform 0.15s;
-  }
-  .collapse-card.open .collapse-header .chev { transform: rotate(90deg); }
-  .collapse-body { padding: 16px 18px; display: none; }
-  .collapse-card.open .collapse-body { display: block; }
-
-  .tools-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
-  }
-  .tools-grid button {
-    min-height: 48px; font-size: 14px; padding: 10px 16px;
-    border-radius: 9px;
-  }
-
   @media (max-width: 768px) {
     /* Prevent any overflow */
     #app { overflow-x: hidden; }
@@ -426,109 +393,6 @@
       color: var(--red) !important;
     }
 
-    /* ── Pass 2: Mobile UI rework ──────────────────────────────────── */
-    /* Header: drop chrome, leave just logo + reconnect notice + Sync */
-    .header-logo {
-      font-size: 17px !important; letter-spacing: 3px !important;
-      color: var(--acc); font-weight: 700;
-    }
-    .header-file, .header-status, .spacer { display: none !important; }
-    #btn-mobile-extras { display: none !important; }
-    #header .mobile-extra { display: none !important; }
-    #header { padding: 8px 12px; gap: 8px; }
-    #header #sync-status { display: none !important; }
-
-    /* Pill tabs */
-    #tabbar {
-      padding: 8px 8px 6px 8px; gap: 8px;
-      background: var(--bg2); border-bottom: 1px solid var(--brd);
-    }
-    .tab {
-      flex: 1; min-height: 48px; font-size: 15px; padding: 12px 8px;
-      border: 1px solid var(--brd); border-radius: 12px;
-      background: var(--bg3); color: var(--t2);
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
-    }
-    .tab.active {
-      background: var(--acc); color: #0d1117;
-      border-color: var(--acc); border-bottom-color: var(--acc);
-      font-weight: 700;
-    }
-    .tab-categories-btn { display: none !important; }
-    .tab-gear { font-size: 17px; }
-    .tab-settings-label { display: none; }
-
-    /* FAB (Add cash) */
-    #fab-add {
-      position: fixed; bottom: 20px; right: 20px;
-      width: 60px; height: 60px; border-radius: 50%;
-      background: var(--acc); color: #0d1117;
-      border: none; font-size: 30px; font-weight: 700;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.45);
-      z-index: 30; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: transform 0.15s;
-    }
-    #fab-add:active { transform: scale(0.92); }
-    body:not(.tab-dashboard-active) #fab-add { display: none; }
-
-    /* Mobile filter popup */
-    #mobile-filter-popup {
-      position: fixed; inset: 0; z-index: 45;
-      background: rgba(0,0,0,0.6);
-      display: none; align-items: flex-end; justify-content: center;
-    }
-    #mobile-filter-popup.open { display: flex; }
-    #mobile-filter-popup-inner {
-      background: var(--bg2); border-top: 1px solid var(--brd);
-      border-radius: 16px 16px 0 0;
-      width: 100%; padding: 18px 16px 24px 16px;
-      max-height: 80vh; overflow-y: auto;
-    }
-    .filter-preset-btn {
-      display: block; width: 100%; min-height: 52px;
-      background: var(--bg3); color: var(--txt);
-      border: 1px solid var(--brd); border-radius: 10px;
-      font-size: 15px; padding: 14px 16px;
-      text-align: left; margin-bottom: 8px;
-      font-family: Georgia, serif; cursor: pointer;
-    }
-    .filter-preset-btn.active {
-      background: rgba(240,136,62,0.15);
-      border-color: var(--acc); color: var(--acc);
-    }
-
-    /* Scroll-snap on dashboard charts */
-    #tab-dashboard {
-      scroll-snap-type: y proximity;
-    }
-    #tab-dashboard .stat-row,
-    #tab-dashboard .charts-row,
-    #tab-dashboard .card {
-      scroll-snap-align: start;
-      scroll-margin-top: 8px;
-    }
-
-    /* Mobile collapsible cards */
-    .collapse-card {
-      max-width: 100%; margin-bottom: 12px;
-      background: var(--bg2); border: 1px solid var(--brd);
-      border-radius: 12px; overflow: hidden;
-    }
-    .collapse-header {
-      padding: 16px; min-height: 56px; font-size: 15px;
-    }
-    .collapse-card .collapse-header { border-bottom: none; }
-    .collapse-card.open .collapse-header { border-bottom: 1px solid var(--brd); }
-
-    .tools-grid {
-      grid-template-columns: 1fr 1fr; gap: 10px;
-    }
-    .tools-grid button {
-      min-height: 56px; font-size: 14px; padding: 12px;
-      border-radius: 10px;
-    }
-
     /* Transaction filters */
     .filters { padding: 8px; gap: 6px; }
     .filters input { flex: 1 1 100%; }
@@ -684,12 +548,12 @@
   <div id="tabbar">
     <button class="tab active" onclick="showTab('dashboard')">Dashboard</button>
     <button class="tab" onclick="showTab('transactions')">Transactions</button>
-    <button class="tab tab-categories-btn" onclick="showTab('categories')">Categories</button>
-    <button class="tab" onclick="showTab('settings')"><span class="tab-gear">⚙</span><span class="tab-settings-label"> Settings</span></button>
+    <button class="tab" onclick="showTab('categories')">Categories</button>
+    <button class="tab" onclick="showTab('settings')">Settings</button>
   </div>
   <!-- Mobile-only toggle. Tapping this collapses/expands #filterbar on phones.
        Hidden on desktop via CSS. Summary text is populated by updateFilterSummary(). -->
-  <button id="filter-toggle" type="button" onclick="onFilterToggleClick()" aria-expanded="false">
+  <button id="filter-toggle" type="button" onclick="toggleFilterBar()" aria-expanded="false">
     <span class="ft-caret">▸</span>
     <span class="ft-label">Filters</span>
     <span class="ft-summary" id="filter-summary-text"></span>
@@ -817,138 +681,92 @@
     </div>
 
     <!-- Categories -->
-    <!-- Categories content has moved into Settings → Categories card.
-         Empty stub kept so legacy JS that pokes #tab-categories doesn't error. -->
-    <div id="tab-categories" style="display:none"></div>
-
-    <!-- Settings (now contains: Cloud sync, Categories, Import rules, Tools) -->
-    <div id="tab-settings" style="display:none">
-      <!-- Cloud sync -->
-      <div class="collapse-card open" id="cc-cloud">
-        <button class="collapse-header" onclick="toggleCollapseCard('cc-cloud')">
-          <span>☁ Cloud sync (Dropbox)</span><span class="chev">▶</span>
-        </button>
-        <div class="collapse-body">
-          <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:14px">
-            Keep CashTrack in sync across your desktop and phone via Dropbox. Edits
-            on one device appear on the other within a few seconds. Only CashTrack's
-            own data file is touched — nothing else in your Dropbox.
+    <div id="tab-categories" style="display:none">
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <!-- Category list -->
+        <div class="card" style="flex:1 1 340px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div class="card-label" style="margin:0">Categories</div>
+            <button class="btn-ai" onclick="showAddCategory()" style="font-size:12px;padding:5px 14px">+ Add category</button>
           </div>
-          <div id="dbx-status" style="font-family:monospace;font-size:12px;min-height:18px;margin-bottom:10px;color:var(--t2)"></div>
-          <div id="dbx-buttons" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
-          <div id="dbx-diag" style="margin-top:14px;padding:10px 12px;background:var(--bg3);border:1px solid var(--brd);border-radius:7px;font-family:monospace;font-size:11px;color:var(--t2);line-height:1.6"></div>
+          <div id="cat-list"></div>
         </div>
-      </div>
-
-      <!-- Categories -->
-      <div class="collapse-card" id="cc-categories">
-        <button class="collapse-header" onclick="toggleCollapseCard('cc-categories')">
-          <span>🏷 Categories</span><span class="chev">▶</span>
-        </button>
-        <div class="collapse-body">
-          <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-            <div style="flex:1 1 320px;min-width:0">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-                <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:var(--t2);text-transform:uppercase">Your categories</div>
-                <button class="btn-ai" onclick="showAddCategory()" style="font-size:12px;padding:6px 14px">+ Add category</button>
-              </div>
-              <div id="cat-list"></div>
+        <!-- Edit panel -->
+        <div class="card" id="cat-edit-panel" style="flex:0 1 300px;display:none">
+          <div class="card-label" style="margin-bottom:16px" id="cat-edit-title">Edit category</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div>
+              <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:5px">NAME</div>
+              <input id="cat-edit-name" type="text" placeholder="e.g. Cycling"
+                style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:7px;padding:8px 12px;color:var(--txt);font-size:14px;outline:none">
             </div>
-            <div class="card" id="cat-edit-panel" style="flex:0 1 300px;display:none;background:var(--bg3)">
-              <div class="card-label" style="margin-bottom:16px" id="cat-edit-title">Edit category</div>
-              <div style="display:flex;flex-direction:column;gap:12px">
-                <div>
-                  <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:5px">NAME</div>
-                  <input id="cat-edit-name" type="text" placeholder="e.g. Cycling"
-                    style="width:100%;background:var(--bg2);border:1px solid var(--brd);border-radius:7px;padding:8px 12px;color:var(--txt);font-size:14px;outline:none">
-                </div>
-                <div>
-                  <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:5px">COLOUR</div>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap" id="cat-colour-swatches"></div>
-                </div>
-                <div>
-                  <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:5px">KEYWORDS (auto-categorise new imports)</div>
-                  <textarea id="cat-edit-keywords" placeholder="one keyword per line&#10;e.g.&#10;strava&#10;garmin&#10;komoot" rows="5"
-                    style="width:100%;background:var(--bg2);border:1px solid var(--brd);border-radius:7px;padding:8px 12px;color:var(--txt);font-size:13px;font-family:monospace;outline:none;resize:vertical"></textarea>
-                  <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-top:4px">Matched against transaction description (case-insensitive)</div>
-                </div>
-                <div style="display:flex;gap:8px;margin-top:4px">
-                  <button class="btn-primary" onclick="saveCategoryEdit()" style="flex:1;padding:9px">Save</button>
-                  <button class="btn-sm" onclick="closeCatEdit()" style="flex:1;padding:9px">Cancel</button>
-                </div>
-                <button id="cat-delete-btn" onclick="deleteCategory()" style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:var(--red);border-radius:7px;padding:8px;font-size:13px;cursor:pointer;display:none">
-                  Delete category &amp; reassign transactions to Other
-                </button>
-              </div>
+            <div>
+              <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:5px">COLOUR</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap" id="cat-colour-swatches"></div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Import rules -->
-      <div class="collapse-card" id="cc-rules">
-        <button class="collapse-header" onclick="toggleCollapseCard('cc-rules')">
-          <span>⚙ Import rules</span><span class="chev">▶</span>
-        </button>
-        <div class="collapse-body">
-          <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:14px">
-            When a transaction is imported, these rules run first and override NAB's own category
-            if a keyword matches the transaction description (case-insensitive).
-            One rule per line, in the format <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">category: keyword</code>.
-            Blank lines and lines starting with <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">#</code> are ignored.
-            <br><br>
-            Valid categories: <span id="rules-valid-cats" style="font-family:monospace;font-size:12px;color:var(--txt)"></span>
-          </div>
-          <textarea id="rules-textarea" rows="14" spellcheck="false"
-            placeholder="income: weekly pay industrious&#10;groceries: woolworths&#10;# This is a comment"
-            style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:7px;padding:10px 12px;color:var(--txt);font-size:13px;font-family:monospace;outline:none;resize:vertical;line-height:1.5"></textarea>
-          <div id="rules-status" style="font-family:monospace;font-size:12px;margin-top:10px;min-height:18px"></div>
-          <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
-            <button class="btn-primary" onclick="saveRulesFromSettings()" style="padding:9px 20px">Save rules</button>
-            <button class="btn-sm" onclick="revertRulesFromSettings()" style="padding:9px 16px">Revert changes</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tools -->
-      <div class="collapse-card" id="cc-tools">
-        <button class="collapse-header" onclick="toggleCollapseCard('cc-tools')">
-          <span>🛠 Tools</span><span class="chev">▶</span>
-        </button>
-        <div class="collapse-body">
-          <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:14px">
-            Power-user tools. Most are for desktop sessions — importing a fresh NAB
-            export, AI-categorising a backlog, finding duplicates after a re-import.
-          </div>
-          <div class="tools-grid">
-            <button class="btn-ai" onclick="aiCategorise()">✦ AI Categorise</button>
-            <button class="btn-sm" onclick="triggerImport()">📂 Import CSV</button>
-            <button class="btn-sm" onclick="findDuplicates()">🔍 Find duplicates</button>
-            <button class="btn-sm" onclick="exportToFile()">⬇ Export data</button>
+            <div>
+              <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-bottom:5px">KEYWORDS (auto-categorise new imports)</div>
+              <textarea id="cat-edit-keywords" placeholder="one keyword per line&#10;e.g.&#10;strava&#10;garmin&#10;komoot" rows="5"
+                style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:7px;padding:8px 12px;color:var(--txt);font-size:13px;font-family:monospace;outline:none;resize:vertical"></textarea>
+              <div style="font-family:monospace;font-size:11px;color:var(--t2);margin-top:4px">Matched against transaction description (case-insensitive)</div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:4px">
+              <button class="btn-primary" onclick="saveCategoryEdit()" style="flex:1;padding:9px">Save</button>
+              <button class="btn-sm" onclick="closeCatEdit()" style="flex:1;padding:9px">Cancel</button>
+            </div>
+            <button id="cat-delete-btn" onclick="deleteCategory()" style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:var(--red);border-radius:7px;padding:8px;font-size:13px;cursor:pointer;display:none">
+              Delete category &amp; reassign transactions to Other
+            </button>
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- ── Floating Action Button (mobile, dashboard only) ───────────── -->
-  <button id="fab-add" onclick="openCashDialog()" aria-label="Add cash transaction">+</button>
-
-  <!-- ── Mobile filter popup ───────────────────────────────────────── -->
-  <div id="mobile-filter-popup" onclick="if(event.target===this)closeMobileFilters()">
-    <div id="mobile-filter-popup-inner">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:var(--t2);text-transform:uppercase">Filter by date</div>
-        <button class="btn-sm" onclick="closeMobileFilters()" style="min-height:40px;padding:8px 14px">Done</button>
+    <!-- Settings -->
+    <div id="tab-settings" style="display:none">
+      <!-- ── Dropbox sync card ──────────────────────────────────────────── -->
+      <div class="card" style="max-width:720px;margin-bottom:16px">
+        <div class="card-label" style="margin-bottom:6px">Cloud sync (Dropbox)</div>
+        <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:14px">
+          Keep CashTrack in sync across your desktop and phone via Dropbox. Edits on one
+          device appear on the other within a few seconds. Only CashTrack's own data file
+          is touched — nothing else in your Dropbox.
+          <br><br>
+          <span style="color:var(--t2);font-size:12px">Sign in with Dropbox once on each device, then forget about it.</span>
+        </div>
+        <div id="dbx-status" style="font-family:monospace;font-size:12px;min-height:18px;margin-bottom:10px;color:var(--t2)"></div>
+        <div id="dbx-buttons" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <!-- filled in by renderSettingsTab -->
+        </div>
+        <!-- Token diagnostic panel — temporary, for chasing down the
+             phone-disconnects-after-swipe bug. Shows whether the access
+             and refresh tokens are present, and when each was last set. -->
+        <div id="dbx-diag" style="margin-top:14px;padding:10px 12px;background:var(--bg3);border:1px solid var(--brd);border-radius:7px;font-family:monospace;font-size:11px;color:var(--t2);line-height:1.6">
+          <!-- filled in by renderSettingsTab -->
+        </div>
       </div>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('week')">This week</button>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('lastweek')">Last week</button>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('month')">This month</button>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('lastmonth')">Last month</button>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('quarter')">This quarter</button>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('year')">This year</button>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('lastyear')">Last year</button>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('all')">All time</button>
+
+      <div class="card" style="max-width:720px">
+        <div class="card-label" style="margin-bottom:6px">Import rules</div>
+        <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:14px">
+          When a transaction is imported, these rules run first and override NAB's own category
+          if a keyword matches the transaction description (case-insensitive).
+          One rule per line, in the format <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">category: keyword</code>.
+          Blank lines and lines starting with <code style="background:var(--bg3);padding:1px 5px;border-radius:3px">#</code> are ignored.
+          <br><br>
+          Valid categories: <span id="rules-valid-cats" style="font-family:monospace;font-size:12px;color:var(--txt)"></span>
+        </div>
+        <textarea id="rules-textarea" rows="14" spellcheck="false"
+          placeholder="income: weekly pay industrious&#10;groceries: woolworths&#10;# This is a comment"
+          style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:7px;padding:10px 12px;color:var(--txt);font-size:13px;font-family:monospace;outline:none;resize:vertical;line-height:1.5"></textarea>
+        <div id="rules-status" style="font-family:monospace;font-size:12px;margin-top:10px;min-height:18px"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <button class="btn-primary" onclick="saveRulesFromSettings()" style="padding:9px 20px">Save rules</button>
+          <button class="btn-sm" onclick="revertRulesFromSettings()" style="padding:9px 16px">Revert changes</button>
+          <span style="flex:1"></span>
+          <span style="font-family:monospace;font-size:11px;color:var(--t2)">Rules only run on new imports. Existing transactions are not re-categorised.</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -4029,9 +3847,7 @@ function openCatEdit(id) {
   document.getElementById('cat-edit-keywords').value = (cat.keywords || []).join('\n');
   document.getElementById('cat-delete-btn').style.display = id === 'other' ? 'none' : '';
   renderColourSwatches(cat.color);
-  const panel = document.getElementById('cat-edit-panel');
-  panel.style.display = '';
-  setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30);
+  document.getElementById('cat-edit-panel').style.display = '';
 }
 
 function showAddCategory() {
@@ -4041,9 +3857,7 @@ function showAddCategory() {
   document.getElementById('cat-edit-keywords').value = '';
   document.getElementById('cat-delete-btn').style.display = 'none';
   renderColourSwatches(SWATCH_COLOURS[0]);
-  const panel = document.getElementById('cat-edit-panel');
-  panel.style.display = '';
-  setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'center' }), 30);
+  document.getElementById('cat-edit-panel').style.display = '';
 }
 
 function renderColourSwatches(selected) {
@@ -4170,45 +3984,14 @@ function showApp() {
 }
 
 function showTab(name) {
-  // Categories is now a card inside Settings — redirect.
-  let expandCard = null;
-  if (name === 'categories') {
-    name = 'settings';
-    expandCard = 'cc-categories';
-  }
   document.getElementById('tab-dashboard').style.display    = name === 'dashboard'    ? '' : 'none';
   document.getElementById('tab-transactions').style.display = name === 'transactions' ? '' : 'none';
+  document.getElementById('tab-categories').style.display   = name === 'categories'   ? '' : 'none';
   document.getElementById('tab-settings').style.display     = name === 'settings'     ? '' : 'none';
-  const tcOld = document.getElementById('tab-categories');
-  if (tcOld) tcOld.style.display = 'none';
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  // Highlight the matching tab button. event.target may be undefined
-  // when called programmatically; in that case look it up by onclick text.
-  let tabBtn = (typeof event !== 'undefined' && event && event.target && event.target.classList && event.target.classList.contains('tab')) ? event.target : null;
-  if (!tabBtn) {
-    document.querySelectorAll('.tab').forEach(t => {
-      if ((t.getAttribute('onclick') || '').indexOf("showTab('" + name + "')") !== -1) tabBtn = t;
-    });
-  }
-  if (tabBtn) tabBtn.classList.add('active');
-  // Body class so FAB knows whether to show
-  document.body.classList.toggle('tab-dashboard-active', name === 'dashboard');
-  if (name === 'settings') {
-    renderSettingsTab();
-    renderCatList(); // Categories card lives here too
-    if (expandCard) {
-      const card = document.getElementById(expandCard);
-      if (card) {
-        card.classList.add('open');
-        setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-      }
-    }
-  }
-}
-
-function toggleCollapseCard(id) {
-  const card = document.getElementById(id);
-  if (card) card.classList.toggle('open');
+  event.target.classList.add('active');
+  if (name === 'categories') renderCatList();
+  if (name === 'settings')   renderSettingsTab();
 }
 
 // ── Settings tab: rules text box + Dropbox sync ──────────────────────────────
@@ -4357,28 +4140,6 @@ function toggleMobileExtras() {
   applyMobileExtrasState();
 }
 applyMobileExtrasState();
-
-// On phones, the filter button opens a popup; on desktop, it toggles the inline bar.
-function onFilterToggleClick() {
-  const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
-  if (isMobile) openMobileFilters();
-  else if (typeof toggleFilterBar === 'function') toggleFilterBar();
-}
-
-// ── Mobile filter popup ─────────────────────────────────────────────────────
-function openMobileFilters() {
-  document.getElementById('mobile-filter-popup').classList.add('open');
-}
-function closeMobileFilters() {
-  document.getElementById('mobile-filter-popup').classList.remove('open');
-}
-function setMobileDatePreset(key) {
-  if (typeof setDatePreset === 'function') setDatePreset(key);
-  closeMobileFilters();
-}
-
-// On launch, set the dashboard-active body class so FAB shows from the start.
-document.body.classList.add('tab-dashboard-active');
 
 // Register service worker for PWA / offline support
 if ('serviceWorker' in navigator) {
