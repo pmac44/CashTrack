@@ -3326,11 +3326,7 @@ async function initStartScreen() {
   const hasFileHandle = hasFileSystemAPI && (await loadHandleFromIDB().catch(() => null));
   const dbxConnected = typeof dbxIsConnected === 'function' && dbxIsConnected();
 
-  // Dropbox-first launch: when Dropbox is connected, pull from cloud and skip
-  // straight to the dashboard. The legacy file-handle / local-cache paths
-  // below are kept as fallbacks — if Dropbox fails (network, refresh dead,
-  // empty cloud) we fall through to them.
-  if (!isOAuthReturn && dbxConnected) {
+  if (!isOAuthReturn && dbxConnected && !hasFileHandle) {
     const ss = document.getElementById('start-screen');
     if (ss) {
       const msg = document.createElement('div');
@@ -3343,8 +3339,7 @@ async function initStartScreen() {
     }
     try {
       // If we have local cache, seed state with it first so the merge has
-      // something to merge into. Same idea as the "Continue with local data"
-      // path would do — but we get there without a button press.
+      // something to merge into.
       if (hasIdbData) {
         loadFromJSON(idbData);
         state.fileName = 'Local cache';
@@ -3354,11 +3349,8 @@ async function initStartScreen() {
         showApp();
         return;
       }
-      // Cloud was empty AND we had no local data either — fall through to
-      // start screen so user can pick a file or start fresh.
     } catch (e) {
-      // Network error / refresh failed / etc. Fall through so the user still
-      // has a way in via the file handle or local cache.
+      // Fall through to normal start screen on any error
     }
     const autoMsg = document.getElementById('auto-pull-msg');
     if (autoMsg) autoMsg.remove();
