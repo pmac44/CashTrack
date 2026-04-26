@@ -296,10 +296,23 @@
       min-height: 32px; padding: 6px 12px; font-size: 12px;
       border-radius: 7px;
     }
-    /* Mobile chart sizing — Chart.js handles dimensions itself via
-       aspectRatio (1:1 for the doughnut, 2.2:1 for the bar). The card
-       sizes naturally to fit, no blank space, no warping. */
+    /* Mobile chart sizing — now that maintainAspectRatio is off, the
+       canvas fills its container exactly. Sizes set per chart so the
+       pie chart has room for tappable segments and the bar chart isn't
+       half blank space.
+       The pie chart needs a tall, near-square container. The bar chart
+       just needs a sensible fixed height. */
     .chart-card { width: 100%; }
+    #chart-pie {
+      width: 100% !important;
+      height: 280px !important;
+      max-height: none !important;
+    }
+    #chart-bar {
+      width: 100% !important;
+      height: 160px !important;
+      max-height: none !important;
+    }
     .is-mobile-hidden { display: none !important; }
 
     body.mobile-extras-hidden #header .mobile-extra { display: none !important; }
@@ -3022,6 +3035,7 @@ function renderDashboard() {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } } },
       cutout: '60%',
     },
@@ -3041,7 +3055,7 @@ function renderDashboard() {
     },
     options: {
       responsive: true,
-      aspectRatio: 2.2,
+      maintainAspectRatio: false,
       plugins: { legend: { labels: { color:'#8b949e', font:{ size:11 } } }, tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } } },
       scales: {
         x: { ticks: { color:'#8b949e', font:{size:11} }, grid: { color:'#30363d' } },
