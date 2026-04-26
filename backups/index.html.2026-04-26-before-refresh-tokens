@@ -1650,93 +1650,21 @@ function dbxScheduleSave() {
   _dbxSaveTimer = setTimeout(() => { _dbxSaveTimer = null; dbxSave(true); }, 5000);
 }
 
-// ── Refresh-token flow ────────────────────────────────────────────────────
-// Use the saved refresh token (issued at first connect via token_access_type=
-// 'offline') to get a brand new access token without forcing the user back
-// through the OAuth screen. Returns the new token on success, null on failure.
-//
-// Failure here means: refresh token is missing, revoked, or invalid. In that
-// case we wipe both tokens and the user has to reconnect once.
-async function dbxRefresh() {
-  const refresh = dbxGetRefresh();
-  if (!refresh) return null;
-  try {
-    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refresh,
-        client_id: DBX_APP_KEY,
-      }),
-    });
-    if (!res.ok) {
-      // 400 = invalid grant (token revoked or rotated). Wipe and force reconnect.
-      if (res.status === 400 || res.status === 401) {
-        dbxSetToken(null);
-        dbxSetRefresh(null);
-      }
-      return null;
-    }
-    const data = await res.json();
-    if (data && data.access_token) {
-      dbxSetToken(data.access_token);
-      // Dropbox refresh tokens are long-lived and don't rotate, but if a new
-      // one ever arrives we save it.
-      if (data.refresh_token) dbxSetRefresh(data.refresh_token);
-      return data.access_token;
-    }
-    return null;
-  } catch (e) {
-    // Network error — don't wipe tokens, user can retry later.
-    return null;
-  }
-}
-
-// fetch() wrapper that auto-refreshes on 401. Calls buildReq() to get the
-// fetch arguments fresh each time, so the retry uses the new token in its
-// Authorization header. Returns the Response, or null if a refresh was
-// attempted and failed (caller should treat null as "session expired").
-async function dbxFetch(buildReq) {
-  let req = buildReq();
-  let res = await fetch(req.url, req.init);
-  if (res.status !== 401) return res;
-  // Try to refresh once.
-  const newToken = await dbxRefresh();
-  if (!newToken) return null;
-  // Rebuild the request so Authorization gets the new token.
-  req = buildReq();
-  res = await fetch(req.url, req.init);
-  return res;
-}
-
 async function dbxSave(auto) {
   if (!dbxIsConnected()) return;
   if (!auto) dbxSetStatus('Saving to Dropbox…');
   try {
     const now = Date.now();
     const body = makeJSON();
-    // Use dbxFetch so an expired access token gets refreshed transparently.
-    // Body needs to be referenced inside buildReq so the rebuilt request still
-    // has it on retry.
-    const res = await dbxFetch(() => ({
-      url: 'https://content.dropboxapi.com/2/files/upload',
-      init: {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + dbxGetToken(),
-          'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE, mode: 'overwrite', autorename: false }),
-          'Content-Type': 'application/octet-stream',
-        },
-        body,
+    const res = await fetch('https://content.dropboxapi.com/2/files/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + dbxGetToken(),
+        'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE, mode: 'overwrite', autorename: false }),
+        'Content-Type': 'application/octet-stream',
       },
-    }));
-    if (res === null) {
-      // Refresh failed — tokens have been wiped by dbxRefresh.
-      dbxSetStatus('Dropbox session expired — reconnect', true);
-      renderSettingsTab();
-      return;
-    }
+      body,
+    });
     if (res.ok) {
       const meta = await res.json().catch(() => null);
       const serverMs = meta && meta.server_modified ? new Date(meta.server_modified).getTime() : now;
@@ -1746,7 +1674,6 @@ async function dbxSave(auto) {
       const tabS = document.getElementById('tab-settings');
       if (tabS && tabS.style.display !== 'none') renderSettingsTab();
     } else if (res.status === 401) {
-      // Got 401 even after refresh attempt — give up cleanly.
       dbxSetToken(null);
       dbxSetStatus('Dropbox session expired — reconnect', true);
       renderSettingsTab();
@@ -1763,22 +1690,13 @@ async function dbxLoad(force) {
   if (!dbxIsConnected()) return;
   if (!force) dbxSetStatus('Checking Dropbox…');
   try {
-    const res = await dbxFetch(() => ({
-      url: 'https://content.dropboxapi.com/2/files/download',
-      init: {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + dbxGetToken(),
-          'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }),
-        },
+    const res = await fetch('https://content.dropboxapi.com/2/files/download', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + dbxGetToken(),
+        'Dropbox-API-Arg': JSON.stringify({ path: DBX_FILE }),
       },
-    }));
-    if (res === null) {
-      // Refresh failed — tokens wiped by dbxRefresh.
-      dbxSetStatus('Dropbox session expired — reconnect', true);
-      renderSettingsTab();
-      return;
-    }
+    });
     if (res.status === 409) {
       // No cloud file yet — this is the first device to connect to this Dropbox app.
       // If we have local data, seed the cloud with it immediately so whoever
