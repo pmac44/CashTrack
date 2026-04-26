@@ -235,8 +235,6 @@
   /* The mobile More/Less toggle is hidden on desktop — desktop has plenty of
      header room for all the buttons. */
   #btn-mobile-extras { display: none; }
-  /* Quick-pick filter row is mobile-only. Desktop uses the inline filterbar. */
-  #quick-filter-row { display: none; }
 
   /* Collapsible cards (used inside Settings tab on both platforms). */
   .collapse-card {
@@ -284,21 +282,14 @@
     .header-file { display: none; }
     .header-status { font-size: 10px; order: 10; }
     .spacer { display: none; }
-    /* Mobile tap targets: header buttons are 48px by default, but the
-       Sync button is rarely pressed (auto-sync handles most cases) so
-       it's lower-profile at 36px. Tabs and other primary actions stay
-       at 48px. */
+    /* Mobile tap targets: properly thumb-friendly. 48px is the standard
+       minimum recommended for touch UI. Earlier versions shrunk buttons
+       to fit a packed header — we now hide most of them by default
+       (see .mobile-extras below), so visible ones can be big. */
     #header .btn-sm, #header .btn-ai {
       font-size: 15px; padding: 12px 16px; min-height: 48px;
       border-radius: 9px;
     }
-    #header #btn-sync {
-      min-height: 36px; padding: 8px 12px; font-size: 13px;
-      border-radius: 8px;
-    }
-    /* Income vs Spending and other charts: shrink so the canvas isn't
-       half blank space on mobile. */
-    .chart-card canvas { max-height: 140px !important; }
     .is-mobile-hidden { display: none !important; }
 
     body.mobile-extras-hidden #header .mobile-extra { display: none !important; }
@@ -480,30 +471,6 @@
     }
     #fab-add:active { transform: scale(0.92); }
     body:not(.tab-dashboard-active) #fab-add { display: none; }
-
-    /* Quick-pick filter chips at top of mobile view */
-    #quick-filter-row {
-      display: flex; gap: 8px; padding: 8px 12px;
-      background: var(--bg2); border-bottom: 1px solid var(--brd);
-    }
-    .qf-btn {
-      flex: 1; min-height: 44px; padding: 10px 8px;
-      background: var(--bg3); border: 1px solid var(--brd);
-      border-radius: 10px; color: var(--t2);
-      font-size: 13px; font-family: Georgia, serif;
-      cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s;
-    }
-    .qf-btn.active {
-      background: var(--acc); color: #0d1117;
-      border-color: var(--acc); font-weight: 700;
-    }
-    .qf-plus {
-      width: 44px; min-height: 44px;
-      background: var(--bg3); border: 1px solid var(--brd);
-      border-radius: 10px; color: var(--t2);
-      font-size: 22px; font-weight: 700; line-height: 1;
-      cursor: pointer;
-    }
 
     /* Mobile filter popup */
     #mobile-filter-popup {
@@ -722,17 +689,7 @@
   </div>
   <!-- Mobile-only toggle. Tapping this collapses/expands #filterbar on phones.
        Hidden on desktop via CSS. Summary text is populated by updateFilterSummary(). -->
-  <!-- Mobile quick-pick filter row. Three common date presets + a "+"
-       that opens the full filter popup with everything (account picker,
-       custom date range, more presets, etc). On desktop this whole row
-       is hidden via CSS — desktop uses the inline #filterbar below. -->
-  <div id="quick-filter-row">
-    <button class="qf-btn" data-preset="week" onclick="quickPickPreset('week')">This week</button>
-    <button class="qf-btn" data-preset="lastweek" onclick="quickPickPreset('lastweek')">Last week</button>
-    <button class="qf-btn" data-preset="month" onclick="quickPickPreset('month')">This month</button>
-    <button class="qf-plus" onclick="openMobileFilters()" aria-label="More filters">+</button>
-  </div>
-  <button id="filter-toggle" type="button" onclick="onFilterToggleClick()" aria-expanded="false" style="display:none">
+  <button id="filter-toggle" type="button" onclick="onFilterToggleClick()" aria-expanded="false">
     <span class="ft-caret">▸</span>
     <span class="ft-label">Filters</span>
     <span class="ft-summary" id="filter-summary-text"></span>
@@ -981,47 +938,17 @@
   <div id="mobile-filter-popup" onclick="if(event.target===this)closeMobileFilters()">
     <div id="mobile-filter-popup-inner">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:var(--t2);text-transform:uppercase">Filters</div>
+        <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:var(--t2);text-transform:uppercase">Filter by date</div>
         <button class="btn-sm" onclick="closeMobileFilters()" style="min-height:40px;padding:8px 14px">Done</button>
       </div>
-
-      <!-- Date presets -->
-      <div style="font-family:monospace;font-size:10px;letter-spacing:1.5px;color:var(--t2);text-transform:uppercase;margin:4px 0 8px 2px">Date range</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('week')" style="margin:0">This week</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('lastweek')" style="margin:0">Last week</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('month')" style="margin:0">This month</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('lastmonth')" style="margin:0">Last month</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('quarter')" style="margin:0">This quarter</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('lastquarter')" style="margin:0">Last quarter</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('year')" style="margin:0">This year</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('lastyear')" style="margin:0">Last year</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('fy')" style="margin:0">This FY</button>
-        <button class="filter-preset-btn" onclick="setMobileDatePreset('lastfy')" style="margin:0">Last FY</button>
-      </div>
-      <button class="filter-preset-btn" onclick="setMobileDatePreset('all')" style="margin-bottom:14px">All time</button>
-
-      <!-- Custom date range -->
-      <div style="font-family:monospace;font-size:10px;letter-spacing:1.5px;color:var(--t2);text-transform:uppercase;margin:4px 0 8px 2px">Custom range</div>
-      <div style="display:flex;gap:8px;margin-bottom:14px">
-        <div style="flex:1">
-          <div style="font-family:monospace;font-size:10px;color:var(--t2);margin-bottom:4px">FROM</div>
-          <input type="date" id="mobile-filter-from" onchange="onMobileCustomDate()"
-            style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;padding:10px;color:var(--txt);font-family:monospace;font-size:14px;outline:none">
-        </div>
-        <div style="flex:1">
-          <div style="font-family:monospace;font-size:10px;color:var(--t2);margin-bottom:4px">TO</div>
-          <input type="date" id="mobile-filter-to" onchange="onMobileCustomDate()"
-            style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;padding:10px;color:var(--txt);font-family:monospace;font-size:14px;outline:none">
-        </div>
-      </div>
-
-      <!-- Account picker -->
-      <div style="font-family:monospace;font-size:10px;letter-spacing:1.5px;color:var(--t2);text-transform:uppercase;margin:4px 0 8px 2px">Account</div>
-      <select id="mobile-filter-account" onchange="onMobileAccountChange()"
-        style="width:100%;background:var(--bg3);border:1px solid var(--brd);border-radius:10px;padding:14px 12px;color:var(--txt);font-family:Georgia,serif;font-size:15px;min-height:52px;outline:none;-webkit-appearance:none;appearance:none">
-        <option value="all">All accounts</option>
-      </select>
+      <button class="filter-preset-btn" onclick="setMobileDatePreset('week')">This week</button>
+      <button class="filter-preset-btn" onclick="setMobileDatePreset('lastweek')">Last week</button>
+      <button class="filter-preset-btn" onclick="setMobileDatePreset('month')">This month</button>
+      <button class="filter-preset-btn" onclick="setMobileDatePreset('lastmonth')">Last month</button>
+      <button class="filter-preset-btn" onclick="setMobileDatePreset('quarter')">This quarter</button>
+      <button class="filter-preset-btn" onclick="setMobileDatePreset('year')">This year</button>
+      <button class="filter-preset-btn" onclick="setMobileDatePreset('lastyear')">Last year</button>
+      <button class="filter-preset-btn" onclick="setMobileDatePreset('all')">All time</button>
     </div>
   </div>
 </div>
@@ -4440,9 +4367,6 @@ function onFilterToggleClick() {
 
 // ── Mobile filter popup ─────────────────────────────────────────────────────
 function openMobileFilters() {
-  // Sync popup controls with the (hidden) inline filterbar so they show
-  // current state, then open the popup.
-  syncMobileFilterPopupFromInline();
   document.getElementById('mobile-filter-popup').classList.add('open');
 }
 function closeMobileFilters() {
@@ -4450,97 +4374,11 @@ function closeMobileFilters() {
 }
 function setMobileDatePreset(key) {
   if (typeof setDatePreset === 'function') setDatePreset(key);
-  rememberLastPreset(key);
-  refreshQuickPickActive();
   closeMobileFilters();
 }
 
-// Quick-pick chip: apply preset and remember it. Doesn't open the popup.
-function quickPickPreset(key) {
-  if (typeof setDatePreset === 'function') setDatePreset(key);
-  rememberLastPreset(key);
-  refreshQuickPickActive();
-}
-
-// Persist the last named preset choice in localStorage. Custom date ranges
-// are not remembered — they reset to a sensible default on cold launch.
-function rememberLastPreset(key) {
-  try { if (key && key !== 'all') localStorage.setItem('ct_last_date_preset', key); } catch {}
-}
-
-// Visual: highlight the matching chip in the quick-pick row.
-function refreshQuickPickActive() {
-  let active = '';
-  try { active = localStorage.getItem('ct_last_date_preset') || ''; } catch {}
-  document.querySelectorAll('.qf-btn').forEach(b => {
-    b.classList.toggle('active', b.getAttribute('data-preset') === active);
-  });
-}
-
-// On launch, restore the last named preset (or default to 'lastweek').
-function applyInitialDateFilter() {
-  let key = '';
-  try { key = localStorage.getItem('ct_last_date_preset') || ''; } catch {}
-  if (!key) key = 'lastweek';
-  if (typeof setDatePreset === 'function') {
-    setDatePreset(key);
-    rememberLastPreset(key);
-  }
-  refreshQuickPickActive();
-}
-
-// Mirror inline-filterbar values into the popup controls.
-function syncMobileFilterPopupFromInline() {
-  const acc = document.getElementById('filter-account-global');
-  const accM = document.getElementById('mobile-filter-account');
-  if (acc && accM) {
-    // Copy options if they've changed
-    if (accM.children.length !== acc.children.length) {
-      accM.innerHTML = '';
-      for (const opt of acc.children) {
-        const o = document.createElement('option');
-        o.value = opt.value; o.textContent = opt.textContent;
-        accM.appendChild(o);
-      }
-    }
-    accM.value = acc.value;
-  }
-  const f = document.getElementById('filter-date-from');
-  const t = document.getElementById('filter-date-to');
-  const fm = document.getElementById('mobile-filter-from');
-  const tm = document.getElementById('mobile-filter-to');
-  if (f && fm) fm.value = f.value;
-  if (t && tm) tm.value = t.value;
-}
-
-// When the user changes account or custom date in the popup, push back
-// to the inline filterbar (which is what renderAll actually reads from).
-function onMobileAccountChange() {
-  const accM = document.getElementById('mobile-filter-account');
-  const acc = document.getElementById('filter-account-global');
-  if (accM && acc) { acc.value = accM.value; if (typeof renderAll === 'function') renderAll(); }
-}
-function onMobileCustomDate() {
-  const fm = document.getElementById('mobile-filter-from');
-  const tm = document.getElementById('mobile-filter-to');
-  const f = document.getElementById('filter-date-from');
-  const t = document.getElementById('filter-date-to');
-  if (fm && f) f.value = fm.value;
-  if (tm && t) t.value = tm.value;
-  if (typeof renderAll === 'function') renderAll();
-  // Custom range chosen — clear the remembered preset so we don't show
-  // a stale active chip.
-  try { localStorage.removeItem('ct_last_date_preset'); } catch {}
-  refreshQuickPickActive();
-}
-
-// On launch, set the dashboard-active body class so FAB shows from the start,
-// and apply the last-remembered date preset (or default to 'lastweek').
+// On launch, set the dashboard-active body class so FAB shows from the start.
 document.body.classList.add('tab-dashboard-active');
-// Defer until after showApp has run so the inline filterbar exists & is wired.
-setTimeout(() => {
-  if (document.getElementById('app').style.display !== 'none') applyInitialDateFilter();
-}, 200);
 
 // Register service worker for PWA / offline support
 if ('serviceWorker' in navigator) {
