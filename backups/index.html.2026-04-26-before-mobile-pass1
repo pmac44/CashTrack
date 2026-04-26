@@ -232,10 +232,6 @@
   td.amt-col { font-family: monospace; font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; }
 
   /* ── Mobile responsive ── */
-  /* The mobile More/Less toggle is hidden on desktop — desktop has plenty of
-     header room for all the buttons. */
-  #btn-mobile-extras { display: none; }
-
   @media (max-width: 768px) {
     /* Prevent any overflow */
     #app { overflow-x: hidden; }
@@ -249,35 +245,8 @@
     .header-file { display: none; }
     .header-status { font-size: 10px; order: 10; }
     .spacer { display: none; }
-    /* Mobile tap targets: bigger, not smaller. 40px min-height keeps the
-       header reasonably compact while staying thumb-friendly. The earlier
-       version of this rule shrunk buttons to fit a packed header — we now
-       hide most of them by default instead (see .mobile-extras below), so
-       the visible ones can be properly tappable. */
-    #header .btn-sm, #header .btn-ai {
-      font-size: 13px; padding: 9px 14px; min-height: 40px;
-      border-radius: 8px;
-    }
+    #header .btn-sm, #header .btn-ai { font-size: 10px; padding: 4px 7px; }
     .is-mobile-hidden { display: none !important; }
-
-    /* Pass 1 of mobile rework: the "extras" buttons (AI Categorise, Import
-       CSV, Find Dupes, Export) collapse behind a More/Less toggle.
-       Sync stays visible because it's the user's escape hatch. */
-    body.mobile-extras-hidden #header .mobile-extra { display: none !important; }
-    body.mobile-extras-hidden #header #sync-status { display: none !important; }
-
-    /* The toggle button itself — small, neutral, just a chevron + word. */
-    #btn-mobile-extras {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: var(--bg3); border: 1px solid var(--brd); color: var(--t2);
-      border-radius: 8px; padding: 9px 12px; font-size: 13px;
-      font-family: monospace; min-height: 40px;
-    }
-    body.mobile-extras-hidden #btn-mobile-extras::before { content: '☰ '; }
-    body:not(.mobile-extras-hidden) #btn-mobile-extras::before { content: '✕ '; }
-
-    /* Tab bar: chunkier tap targets */
-    .tab { min-height: 48px; }
 
     /* Tabs: full width, evenly spaced */
     #tabbar { padding: 0; }
@@ -529,13 +498,12 @@
         oninput="onApiKeyInput(this.value)" />
       <span id="api-key-tick" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:13px;display:none">✓</span>
     </div>
-    <button class="btn-ai mobile-extra" id="btn-ai" onclick="aiCategorise()">✦ AI Categorise</button>
-    <button class="btn-sm mobile-extra" onclick="triggerImport()">Import CSV</button>
-    <button class="btn-sm mobile-extra" onclick="findDuplicates()">Find Dupes</button>
+    <button class="btn-ai" id="btn-ai" onclick="aiCategorise()">✦ AI Categorise</button>
+    <button class="btn-sm" onclick="triggerImport()">Import CSV</button>
+    <button class="btn-sm" onclick="findDuplicates()">Find Dupes</button>
     <span id="sync-status" style="font-family:monospace;font-size:12px;color:var(--t2)"></span>
     <button class="btn-sm" onclick="triggerSync()" id="btn-sync">☁ Sync</button>
-    <button class="btn-sm mobile-extra" onclick="exportToFile()">Export</button>
-    <button id="btn-mobile-extras" onclick="toggleMobileExtras()" aria-label="More options">More</button>
+    <button class="btn-sm" onclick="exportToFile()">Export</button>
   </div>
   <div id="sync-banner">
     <span id="sync-banner-msg"></span>
@@ -4047,23 +4015,6 @@ window.addEventListener('beforeunload', e => {
 // ══ Init ═════════════════════════════════════════════════════════════════════
 loadCatsFromStorage();
 initStartScreen();
-
-// ── Mobile More/Less toggle ─────────────────────────────────────────────────
-// Default: extras hidden. State persisted in localStorage so the choice
-// survives reloads. Desktop ignores this entirely (the toggle button is
-// hidden by CSS outside the mobile media query).
-function applyMobileExtrasState() {
-  const hidden = localStorage.getItem('ct_mobile_extras') !== 'shown';
-  document.body.classList.toggle('mobile-extras-hidden', hidden);
-  const btn = document.getElementById('btn-mobile-extras');
-  if (btn) btn.textContent = hidden ? 'More' : 'Less';
-}
-function toggleMobileExtras() {
-  const showing = document.body.classList.contains('mobile-extras-hidden');
-  localStorage.setItem('ct_mobile_extras', showing ? 'shown' : 'hidden');
-  applyMobileExtrasState();
-}
-applyMobileExtrasState();
 
 // Register service worker for PWA / offline support
 if ('serviceWorker' in navigator) {
