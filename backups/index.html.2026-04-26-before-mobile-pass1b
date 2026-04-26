@@ -249,37 +249,35 @@
     .header-file { display: none; }
     .header-status { font-size: 10px; order: 10; }
     .spacer { display: none; }
-    /* Mobile tap targets: properly thumb-friendly. 48px is the standard
-       minimum recommended for touch UI. Earlier versions shrunk buttons
-       to fit a packed header — we now hide most of them by default
-       (see .mobile-extras below), so visible ones can be big. */
+    /* Mobile tap targets: bigger, not smaller. 40px min-height keeps the
+       header reasonably compact while staying thumb-friendly. The earlier
+       version of this rule shrunk buttons to fit a packed header — we now
+       hide most of them by default instead (see .mobile-extras below), so
+       the visible ones can be properly tappable. */
     #header .btn-sm, #header .btn-ai {
-      font-size: 15px; padding: 12px 16px; min-height: 48px;
-      border-radius: 9px;
+      font-size: 13px; padding: 9px 14px; min-height: 40px;
+      border-radius: 8px;
     }
     .is-mobile-hidden { display: none !important; }
 
+    /* Pass 1 of mobile rework: the "extras" buttons (AI Categorise, Import
+       CSV, Find Dupes, Export) collapse behind a More/Less toggle.
+       Sync stays visible because it's the user's escape hatch. */
     body.mobile-extras-hidden #header .mobile-extra { display: none !important; }
+    body.mobile-extras-hidden #header #sync-status { display: none !important; }
 
+    /* The toggle button itself — small, neutral, just a chevron + word. */
     #btn-mobile-extras {
       display: inline-flex; align-items: center; gap: 4px;
       background: var(--bg3); border: 1px solid var(--brd); color: var(--t2);
-      border-radius: 9px; padding: 12px 14px; font-size: 15px;
-      font-family: monospace; min-height: 48px;
+      border-radius: 8px; padding: 9px 12px; font-size: 13px;
+      font-family: monospace; min-height: 40px;
     }
     body.mobile-extras-hidden #btn-mobile-extras::before { content: '☰ '; }
     body:not(.mobile-extras-hidden) #btn-mobile-extras::before { content: '✕ '; }
 
-    .tab { min-height: 52px; font-size: 15px; padding: 14px 8px; }
-
-    #header-dbx-notice {
-      background: rgba(248,113,113,0.12);
-      border: 1px solid rgba(248,113,113,0.35);
-      color: var(--red); border-radius: 9px;
-      padding: 10px 14px; font-size: 13px;
-      font-family: monospace; min-height: 48px;
-      display: inline-flex; align-items: center;
-    }
+    /* Tab bar: chunkier tap targets */
+    .tab { min-height: 48px; }
 
     /* Tabs: full width, evenly spaced */
     #tabbar { padding: 0; }
@@ -534,9 +532,8 @@
     <button class="btn-ai mobile-extra" id="btn-ai" onclick="aiCategorise()">✦ AI Categorise</button>
     <button class="btn-sm mobile-extra" onclick="triggerImport()">Import CSV</button>
     <button class="btn-sm mobile-extra" onclick="findDuplicates()">Find Dupes</button>
-    <span id="sync-status" style="font-family:monospace;font-size:12px;color:var(--t2);display:none"></span>
+    <span id="sync-status" style="font-family:monospace;font-size:12px;color:var(--t2)"></span>
     <button class="btn-sm" onclick="triggerSync()" id="btn-sync">☁ Sync</button>
-    <span id="header-dbx-notice" onclick="showTab('settings')" style="display:none;cursor:pointer">⚠ Reconnect Dropbox</span>
     <button class="btn-sm mobile-extra" onclick="exportToFile()">Export</button>
     <button id="btn-mobile-extras" onclick="toggleMobileExtras()" aria-label="More options">More</button>
   </div>
@@ -736,12 +733,6 @@
         </div>
         <div id="dbx-status" style="font-family:monospace;font-size:12px;min-height:18px;margin-bottom:10px;color:var(--t2)"></div>
         <div id="dbx-buttons" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <!-- filled in by renderSettingsTab -->
-        </div>
-        <!-- Token diagnostic panel — temporary, for chasing down the
-             phone-disconnects-after-swipe bug. Shows whether the access
-             and refresh tokens are present, and when each was last set. -->
-        <div id="dbx-diag" style="margin-top:14px;padding:10px 12px;background:var(--bg3);border:1px solid var(--brd);border-radius:7px;font-family:monospace;font-size:11px;color:var(--t2);line-height:1.6">
           <!-- filled in by renderSettingsTab -->
         </div>
       </div>
@@ -1593,9 +1584,9 @@ let _dbxSaveTimer = null;
 
 // ── token + timestamp persistence (localStorage) ──────────────────────────
 function dbxGetToken()        { try { return localStorage.getItem('ct_dbx_token')   || null; } catch { return null; } }
-function dbxSetToken(t)       { try { if (t) { localStorage.setItem('ct_dbx_token', t); localStorage.setItem('ct_dbx_token_setAt', String(Date.now())); } else { localStorage.removeItem('ct_dbx_token'); localStorage.removeItem('ct_dbx_token_setAt'); } } catch {} }
+function dbxSetToken(t)       { try { t ? localStorage.setItem('ct_dbx_token', t)   : localStorage.removeItem('ct_dbx_token'); } catch {} }
 function dbxGetRefresh()      { try { return localStorage.getItem('ct_dbx_refresh') || null; } catch { return null; } }
-function dbxSetRefresh(t)     { try { if (t) { localStorage.setItem('ct_dbx_refresh', t); localStorage.setItem('ct_dbx_refresh_setAt', String(Date.now())); } else { localStorage.removeItem('ct_dbx_refresh'); localStorage.removeItem('ct_dbx_refresh_setAt'); } } catch {} }
+function dbxSetRefresh(t)     { try { t ? localStorage.setItem('ct_dbx_refresh', t) : localStorage.removeItem('ct_dbx_refresh'); } catch {} }
 function dbxGetSavedAt()      { try { return +(localStorage.getItem('ct_dbx_savedAt') || 0); } catch { return 0; } }
 function dbxSetSavedAt(ms)    { try { localStorage.setItem('ct_dbx_savedAt', String(ms)); } catch {} }
 
@@ -3278,54 +3269,9 @@ function setStatus(msg) {
   document.getElementById('header-status').textContent = msg;
 }
 
-// updateSyncStatus drives BOTH the (hidden) sync-status span (legacy
-// callers still use it) and the Sync button label itself. The button auto-
-// reverts to its idle "☁ Sync" label after ~3s so a transient confirmation
-// like "✓ Synced" doesn't get stuck on screen. Empty msg = clear.
-let _syncBtnRevertTimer = null;
 function updateSyncStatus(msg) {
   const el = document.getElementById('sync-status');
-  if (el) el.textContent = msg || '';
-  const btn = document.getElementById('btn-sync');
-  if (btn) {
-    if (_syncBtnRevertTimer) { clearTimeout(_syncBtnRevertTimer); _syncBtnRevertTimer = null; }
-    if (!msg) {
-      btn.textContent = '☁ Sync';
-    } else {
-      // Trim NAB-style verbose status to fit the button cleanly.
-      let label = msg;
-      if (/^Saving/.test(msg))           label = '☁ Saving…';
-      else if (/^Syncing/i.test(msg))    label = '☁ Syncing…';
-      else if (/^Checking/.test(msg))    label = '☁ Checking…';
-      else if (/Synced/.test(msg))       label = '✓ Synced';
-      else if (/Up to date/.test(msg))   label = '✓ Up to date';
-      else if (/Merged cloud/.test(msg)) label = '✓ Merged';
-      else if (/Saved locally/.test(msg))label = '✓ Saved locally';
-      else if (/expired/.test(msg))      label = '⚠ Reconnect';
-      else if (/failed/.test(msg))       label = '⚠ Sync failed';
-      btn.textContent = label;
-      // For end-state labels, schedule a revert. For transient "...ing"
-      // states, leave the label until the next call updates it.
-      if (/^[✓⚠]/.test(label)) {
-        _syncBtnRevertTimer = setTimeout(() => {
-          btn.textContent = '☁ Sync';
-          _syncBtnRevertTimer = null;
-        }, 3500);
-      }
-    }
-  }
-  // Also reflect connection state in the header offline notice.
-  refreshDbxOfflineNotice();
-}
-
-// Show or hide the "⚠ Reconnect Dropbox" badge in the header based on
-// whether Dropbox is currently connected. Called from updateSyncStatus
-// and from the launch flow.
-function refreshDbxOfflineNotice() {
-  const notice = document.getElementById('header-dbx-notice');
-  if (!notice) return;
-  const connected = (typeof dbxIsConnected === 'function') && dbxIsConnected();
-  notice.style.display = connected ? 'none' : 'inline-flex';
+  if (el) el.textContent = msg;
 }
 
 // ══ IndexedDB: persist file handle across sessions ════════════════════════════
@@ -3463,17 +3409,17 @@ async function initStartScreen() {
     }
   }
 
-  // Mobile / non-FSAPI path with cached data: skip the start screen
-  // entirely. The user has used the app before — they just want it to open.
-  // The header will show a "Reconnect Dropbox" notice if needed, so they
-  // can still get back to a connected state from inside the app.
+  // Mobile / non-FSAPI path — check IDB cache
   if (idbData && idbData.transactions && idbData.transactions.length > 0) {
-    loadFromJSON(idbData);
-    state.fileName = 'Local cache';
-    showApp();
-    return;
+    if (contDiv) contDiv.style.display = 'flex';
+    if (btnDiv)  btnDiv.style.display  = 'none';
+    const deviceInfo = idbData.lastDevice || 'this device';
+    const timeInfo = idbData.lastUpdated ? formatTimeAgo(new Date(idbData.lastUpdated)) : '';
+    if (label) label.innerHTML = `Local data · last saved on ${escHtml(deviceInfo)} ${timeInfo}<br>
+      <button class="btn-secondary" onclick="loadFromFilePicker()" style="margin-top:10px;font-size:13px;padding:8px 18px">☁ Load from file instead</button>`;
+    state._pendingIDBData = idbData;
+    if (contBtn) contBtn.textContent = '▶ Continue with local data';
   }
-  // Truly empty: show the start screen with file/start-fresh options.
 }
 
 async function continueLastFile() {
@@ -4023,28 +3969,6 @@ function renderSettingsTab() {
         + '<span style="font-family:monospace;font-size:11px;color:var(--t2);margin-left:6px">You\'ll be redirected to Dropbox to sign in.</span>';
       if (statEl && !statEl.textContent) { statEl.textContent = 'Not connected'; statEl.style.color = 'var(--t2)'; }
     }
-  }
-
-  // ── Token diagnostic (temporary) ────────────────────────────────────
-  // Shows whether tokens are actually in localStorage and when they were
-  // last set. Helps us tell the difference between "token expired and
-  // refresh failed" vs "browser wiped storage entirely".
-  const diag = document.getElementById('dbx-diag');
-  if (diag) {
-    let accessToken = null, refreshToken = null, accessSetAt = 0, refreshSetAt = 0;
-    try { accessToken = localStorage.getItem('ct_dbx_token'); } catch {}
-    try { refreshToken = localStorage.getItem('ct_dbx_refresh'); } catch {}
-    try { accessSetAt = +(localStorage.getItem('ct_dbx_token_setAt') || 0); } catch {}
-    try { refreshSetAt = +(localStorage.getItem('ct_dbx_refresh_setAt') || 0); } catch {}
-    const fmt = ms => ms ? new Date(ms).toLocaleString() : '(no timestamp)';
-    const tokLen = t => t ? '(present, ' + t.length + ' chars)' : '(MISSING)';
-    diag.innerHTML =
-      'TOKEN DIAGNOSTIC<br>' +
-      '&nbsp;&nbsp;Access token:&nbsp;&nbsp;' + tokLen(accessToken) + '<br>' +
-      '&nbsp;&nbsp;Last set:&nbsp;&nbsp;' + fmt(accessSetAt) + '<br>' +
-      '&nbsp;&nbsp;Refresh token:&nbsp;' + tokLen(refreshToken) + '<br>' +
-      '&nbsp;&nbsp;Last set:&nbsp;&nbsp;' + fmt(refreshSetAt) + '<br>' +
-      '&nbsp;&nbsp;Browser:&nbsp;&nbsp;&nbsp;&nbsp;' + (navigator.userAgent || '?').slice(0, 90);
   }
 }
 
