@@ -293,26 +293,12 @@
       border-radius: 9px;
     }
     #header #btn-sync {
-      min-height: 32px; padding: 6px 12px; font-size: 12px;
-      border-radius: 7px;
+      min-height: 36px; padding: 8px 12px; font-size: 13px;
+      border-radius: 8px;
     }
-    /* Mobile chart sizing — now that maintainAspectRatio is off, the
-       canvas fills its container exactly. Sizes set per chart so the
-       pie chart has room for tappable segments and the bar chart isn't
-       half blank space.
-       The pie chart needs a tall, near-square container. The bar chart
-       just needs a sensible fixed height. */
-    .chart-card { width: 100%; }
-    #chart-pie {
-      width: 100% !important;
-      height: 280px !important;
-      max-height: none !important;
-    }
-    #chart-bar {
-      width: 100% !important;
-      height: 160px !important;
-      max-height: none !important;
-    }
+    /* Income vs Spending and other charts: shrink so the canvas isn't
+       half blank space on mobile. */
+    .chart-card canvas { max-height: 140px !important; }
     .is-mobile-hidden { display: none !important; }
 
     body.mobile-extras-hidden #header .mobile-extra { display: none !important; }
@@ -385,6 +371,7 @@
     /* Charts: stack vertically */
     .charts-row { flex-direction: column; gap: 10px; }
     .chart-card { flex: 1 1 auto; }
+    .chart-card canvas { max-height: 200px; }
 
     /* Category breakdown — hide the Description column on mobile (it's empty on
        category summary rows; individual transaction descriptions still show inside
@@ -528,10 +515,8 @@
     #mobile-filter-popup-inner {
       background: var(--bg2); border-top: 1px solid var(--brd);
       border-radius: 16px 16px 0 0;
-      width: 100%; padding: 16px 14px 22px 14px;
-      max-height: 92vh; overflow-y: auto;
-      /* Sit flush at the bottom; content scrolls inside if it's taller
-         than max-height. */
+      width: 100%; padding: 18px 16px 24px 16px;
+      max-height: 80vh; overflow-y: auto;
     }
     .filter-preset-btn {
       display: block; width: 100%; min-height: 52px;
@@ -3034,8 +3019,6 @@ function renderDashboard() {
       datasets: [{ data: s.catData.map(c => c.total), backgroundColor: s.catData.map(c => c.color), borderWidth: 2, borderColor: '#161b22' }],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } } },
       cutout: '60%',
     },
@@ -3054,8 +3037,6 @@ function renderDashboard() {
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
       plugins: { legend: { labels: { color:'#8b949e', font:{ size:11 } } }, tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } } },
       scales: {
         x: { ticks: { color:'#8b949e', font:{size:11} }, grid: { color:'#30363d' } },

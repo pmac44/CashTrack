@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cashtrack-v36';
+const CACHE_NAME = 'cashtrack-v37';
 const ASSETS = [
   './',
   './index.html',
