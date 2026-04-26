@@ -298,8 +298,13 @@
     }
     /* Mobile chart sizing — Chart.js handles dimensions itself via
        aspectRatio (1:1 for the doughnut, 2.2:1 for the bar). The card
-       sizes naturally to fit, no blank space, no warping. */
-    .chart-card { width: 100%; }
+       sizes naturally to fit, no blank space, no warping.
+       Override the desktop inline flex (which makes the bar card 2x
+       taller than the donut) so cards just size to content. */
+    .chart-card {
+      width: 100%;
+      flex: 0 0 auto !important;
+    }
     .is-mobile-hidden { display: none !important; }
 
     body.mobile-extras-hidden #header .mobile-extra { display: none !important; }
