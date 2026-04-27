@@ -237,6 +237,8 @@
   #btn-mobile-extras { display: none; }
   /* Quick-pick filter row is mobile-only. Desktop uses the inline filterbar. */
   #quick-filter-row { display: none; }
+  /* Mobile filter popup is mobile-only — never visible on desktop. */
+  #mobile-filter-popup { display: none !important; }
 
   /* Collapsible cards (used inside Settings tab on both platforms). */
   .collapse-card {
@@ -514,9 +516,10 @@
     #mobile-filter-popup {
       position: fixed; inset: 0; z-index: 45;
       background: rgba(0,0,0,0.6);
-      display: none; align-items: flex-end; justify-content: center;
+      align-items: flex-end; justify-content: center;
     }
-    #mobile-filter-popup.open { display: flex; }
+    /* !important needed to beat the desktop base rule */
+    #mobile-filter-popup.open { display: flex !important; }
     #mobile-filter-popup-inner {
       background: var(--bg2); border-top: 1px solid var(--brd);
       border-radius: 16px 16px 0 0;
