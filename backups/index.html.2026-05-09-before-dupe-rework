@@ -984,7 +984,6 @@
             <button class="btn-sm" onclick="triggerImport()">📂 Import CSV</button>
             <button class="btn-sm" onclick="findDuplicates()">🔍 Find duplicates</button>
             <button class="btn-sm" onclick="exportToFile()">⬇ Export data</button>
-            <button class="btn-sm" onclick="confirmClearDismissedDupes()" id="clear-dismissed-dupes-btn">↻ Reset dismissed dupes</button>
           </div>
         </div>
       </div>
@@ -1585,10 +1584,6 @@ let state = {
   dirty: false,
   customPresets: [],   // { id, name, from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
   overrideRules: DEFAULT_OVERRIDE_RULES.map(r => ({ cat: r.cat, words: r.words.slice() })),
-  // Pairs of transaction IDs the user has confirmed are NOT duplicates.
-  // Stored as [{ ids: [id1, id2], at: timestamp }] with ids sorted alphabetically
-  // so order doesn't matter when checking. Survives across sessions and re-imports.
-  notDuplicates: [],
   // Sync layer fields
   deviceId: null,
   deviceName: null,
@@ -1620,103 +1615,6 @@ function makeId() {
 
 function fingerprint(dateStr, amount, description) {
   return `${dateStr}::${amount}::${(description || '').trim().toLowerCase()}`;
-}
-
-// ── Duplicate detection helpers ─────────────────────────────────────────────
-// Used by both importCSV (auto-skip) and findDuplicates (manual review window).
-
-// NAB ref-number pattern: single capital letter + 9-10 digits (e.g. "L6888607000").
-function extractRefNumber(desc) {
-  const m = (desc || '').match(/\b([A-Z]\d{9,10})\b/);
-  return m ? m[1] : null;
-}
-
-// Normalise a description so two ways of describing the same merchant collapse
-// to the same string. Strips card-number suffixes ("CARD XXXX1234"), value-date
-// stamps ("VALUE DATE 09/05"), and reduces whitespace + punctuation.
-// Returns the first 12 alphanumeric chars as a stable matching key.
-function descKey(desc) {
-  let s = (desc || '').toLowerCase();
-  s = s.replace(/\bvalue date\b[^a-z0-9]*\d{1,2}\/\d{1,2}(\/\d{2,4})?/gi, ' ');
-  s = s.replace(/\bcard\s+x+\d+/gi, ' ');
-  s = s.replace(/\bxx\d{2,}\b/gi, ' ');
-  s = s.replace(/[^a-z0-9 ]+/g, ' ');
-  s = s.replace(/\s+/g, ' ').trim();
-  // First 12 alphanumeric chars (no spaces) — usually merchant name.
-  return s.replace(/\s/g, '').slice(0, 12);
-}
-
-// Days between two YYYY-MM-DD strings. Returns Infinity if either is malformed.
-function daysBetween(d1, d2) {
-  const a = Date.parse(d1);
-  const b = Date.parse(d2);
-  if (isNaN(a) || isNaN(b)) return Infinity;
-  return Math.abs(a - b) / 86400000;
-}
-
-// Two transactions are "near-duplicates" if same amount + same account, ±5 days,
-// AND descriptions normalise to the same merchant key. Tighter than just date+amount
-// so we don't flag two coffees on consecutive days.
-const DUPE_DATE_WINDOW_DAYS = 5;
-function isNearDuplicate(a, b) {
-  if (a.amount !== b.amount) return false;
-  if ((a.account || '') !== (b.account || '')) return false;
-  if (daysBetween(a.dateStr, b.dateStr) > DUPE_DATE_WINDOW_DAYS) return false;
-  const ka = descKey(a.description);
-  const kb = descKey(b.description);
-  if (!ka || !kb) return false;
-  return ka === kb;
-}
-
-// "Not duplicates" memory ----------------------------------------------------
-// State stores [{ ids: [id1, id2], at: timestamp }] with ids sorted alphabetically.
-
-function _pairKey(id1, id2) {
-  return [id1, id2].sort().join('::');
-}
-
-function isPairDismissed(id1, id2) {
-  if (!Array.isArray(state.notDuplicates)) return false;
-  const key = _pairKey(id1, id2);
-  return state.notDuplicates.some(p =>
-    Array.isArray(p.ids) && p.ids.length === 2 && _pairKey(p.ids[0], p.ids[1]) === key
-  );
-}
-
-// Mark every pairwise combination in a group as "not duplicates".
-function dismissDupeGroup(ids) {
-  if (!Array.isArray(state.notDuplicates)) state.notDuplicates = [];
-  const now = Date.now();
-  let added = 0;
-  for (let i = 0; i < ids.length; i++) {
-    for (let j = i + 1; j < ids.length; j++) {
-      if (!isPairDismissed(ids[i], ids[j])) {
-        state.notDuplicates.push({ ids: [ids[i], ids[j]].sort(), at: now });
-        added++;
-      }
-    }
-  }
-  if (added > 0) {
-    state.notDuplicatesModifiedAt = now;
-    scheduleSave();
-  }
-  return added;
-}
-
-// True if every pair within the group is already dismissed (group should be hidden).
-function isGroupFullyDismissed(txns) {
-  for (let i = 0; i < txns.length; i++) {
-    for (let j = i + 1; j < txns.length; j++) {
-      if (!isPairDismissed(txns[i].id, txns[j].id)) return false;
-    }
-  }
-  return true;
-}
-
-function clearAllDismissedDupes() {
-  state.notDuplicates = [];
-  state.notDuplicatesModifiedAt = Date.now();
-  scheduleSave();
 }
 
 function guessCategory(desc) {
@@ -2323,29 +2221,6 @@ function mergeCloudState(cloud) {
     state.overrideRulesModifiedAt = cloudRulesMs;
   }
 
-  // -- "Not duplicates" dismissal list: union merge --
-  // Both devices accumulate dismissals independently; union is the safe merge
-  // because removing a dismissal is rare and explicit (Reset button).
-  if (Array.isArray(cloud.notDuplicates)) {
-    if (!Array.isArray(state.notDuplicates)) state.notDuplicates = [];
-    const seen = new Set(state.notDuplicates.map(p =>
-      Array.isArray(p.ids) ? [p.ids[0], p.ids[1]].sort().join('::') : ''
-    ));
-    for (const p of cloud.notDuplicates) {
-      if (!Array.isArray(p.ids) || p.ids.length !== 2) continue;
-      const k = [p.ids[0], p.ids[1]].sort().join('::');
-      if (!seen.has(k)) {
-        state.notDuplicates.push({ ids: [p.ids[0], p.ids[1]].sort(), at: p.at || Date.now() });
-        seen.add(k);
-      }
-    }
-    // Bump the local modified-at so this device flushes the merged set on next save.
-    state.notDuplicatesModifiedAt = Math.max(
-      state.notDuplicatesModifiedAt || 0,
-      cloud.notDuplicatesModifiedAt || 0
-    );
-  }
-
   return { added, updated, deletedFromCloud };
 }
 
@@ -2534,29 +2409,36 @@ function importCSV(text) {
     return;
   }
 
-  // Dedup strategy:
-  //   1. Ref-number match (same ref + amount): always a duplicate, date ignored.
-  //      This is how NAB pending-then-settled is normally caught.
-  //   2. No ref? Fall back to "near-duplicate": same amount + same account,
-  //      within ±5 days, AND descriptions normalise to the same merchant key.
-  //      Catches card purchases that drift by a day or two when the bank settles
-  //      a pending transaction. Description check stops two same-day coffees
-  //      from being silently merged.
+  // Extract NAB's reference number from a description (e.g. "L6888607000" from
+  // "ONLINE L6888607000 Weekly pay INDUSTRIOUS"). Pattern: single letter
+  // followed by 9-10 digits. Returns null if no ref number found.
+  const extractRefNumber = (desc) => {
+    const m = (desc || '').match(/\b([A-Z]\d{9,10})\b/);
+    return m ? m[1] : null;
+  };
+
+  // Build two dedup maps:
+  //   refKey: refNumber + amount → used when description has a ref number.
+  //     Catches the NAB pending-then-settled pattern (same ref, different dates).
+  //   dateKey: dateStr + amount + account → fallback for transactions without
+  //     a ref number (e.g. card purchases). Counts occurrences so legitimate
+  //     same-day same-amount transactions (two $5.50 coffees) still come through.
   const refKey = (ref, amount) => `${ref}::${amount}`;
+  const dateKey = (dateStr, amount, account) => `${dateStr}::${amount}::${account || ''}`;
 
   const existingRefs = new Set();
-  const existingNoRef = []; // transactions without a ref, used for near-dup matching
+  const existingDateCounts = new Map();
   for (const t of state.transactions) {
-    if (t.deleted) continue;
     const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
     if (ref) {
       existingRefs.add(refKey(ref, t.amount));
     } else {
-      existingNoRef.push(t);
+      const k = dateKey(t.dateStr, t.amount, t.account);
+      existingDateCounts.set(k, (existingDateCounts.get(k) || 0) + 1);
     }
   }
+  const importDateCounts = new Map();
   const importRefs = new Set();
-  const importNoRef = []; // rows already accepted in this batch, for in-batch dedup
 
   let added = 0, dupes = 0;
   for (const row of parsed) {
@@ -2570,17 +2452,15 @@ function importCSV(text) {
       }
       importRefs.add(rk);
     } else {
-      // No ref number: check for a near-duplicate in existing data OR earlier in
-      // this same import batch (defends against the CSV containing both pending
-      // and settled rows for the same purchase).
-      const candidate = { dateStr: row.dateStr, amount: row.amount, description: row.description, account: row.account || '' };
-      const matched =
-        existingNoRef.some(t => isNearDuplicate(candidate, t)) ||
-        importNoRef.some(t => isNearDuplicate(candidate, t));
-      if (matched) {
+      // Fallback for transactions without a ref number: old date+amount+account check
+      const k = dateKey(row.dateStr, row.amount, row.account || '');
+      const alreadyHave = existingDateCounts.get(k) || 0;
+      const alreadyImported = importDateCounts.get(k) || 0;
+      if (alreadyImported < alreadyHave) {
+        importDateCounts.set(k, alreadyImported + 1);
         dupes++; continue;
       }
-      importNoRef.push(candidate);
+      importDateCounts.set(k, alreadyImported + 1);
     }
     const fp = fingerprint(row.dateStr, row.amount, row.description) + '::' + (row.account || '');
     // Override rules win first (fix NAB mis-labels like "Weekly pay" as transfer).
@@ -2618,106 +2498,57 @@ function importCSV(text) {
 // ══ Duplicate Finder ══════════════════════════════════════════════════════════
 
 function findDuplicates() {
-  // Two-tier grouping:
-  //   1. Ref-number groups: any transactions sharing the same NAB ref + amount.
-  //      Date ignored — this is the cleanest pending/settled match.
-  //   2. Near-duplicate groups (no ref): same amount + account, within ±5 days,
-  //      same merchant key. Uses isNearDuplicate() for the pairwise check.
-  //
-  // Groups where every pair is already in state.notDuplicates are filtered out,
-  // so dismissed pairs never show up again.
+  // Extract NAB's reference number from a description (e.g. "L6888607000").
+  // Shared with importCSV — same pattern: single letter + 9-10 digits.
+  const extractRefNumber = (desc) => {
+    const m = (desc || '').match(/\b([A-Z]\d{9,10})\b/);
+    return m ? m[1] : null;
+  };
 
-  // First, partition transactions into ref-haves and ref-nots.
-  const byRef = new Map();
-  const noRefTxns = [];
+  // Group transactions so likely duplicates sit together:
+  //   If the transaction has a NAB reference number, group by ref + amount
+  //     (catches pending-then-settled where date differs but ref matches).
+  //   Otherwise fall back to date + amount + account
+  //     (safer for card purchases without ref numbers).
+  const groups = new Map();
   for (const t of state.transactions) {
-    if (t.deleted) continue;
+    if (t.deleted) continue; // soft-deleted rows shouldn't show up in dupe finder
     const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
-    if (ref) {
-      const k = `${ref}::${t.amount}`;
-      if (!byRef.has(k)) byRef.set(k, []);
-      byRef.get(k).push(t);
-    } else {
-      noRefTxns.push(t);
-    }
+    const k = ref
+      ? `ref::${ref}::${t.amount}`
+      : `date::${t.dateStr}::${t.amount}::${t.account || ''}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(t);
   }
 
-  // Ref-number groups: anything with >1 entry is a candidate group.
-  const groups = [];
-  for (const txns of byRef.values()) {
-    if (txns.length > 1) groups.push(txns);
-  }
-
-  // Near-duplicate groups: union-find over noRefTxns using isNearDuplicate as the edge.
-  // Simple O(n²) is fine — we're talking thousands of transactions, not millions.
-  const parent = noRefTxns.map((_, i) => i);
-  const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-  const union = (i, j) => { const ri = find(i), rj = find(j); if (ri !== rj) parent[ri] = rj; };
-  for (let i = 0; i < noRefTxns.length; i++) {
-    for (let j = i + 1; j < noRefTxns.length; j++) {
-      if (isNearDuplicate(noRefTxns[i], noRefTxns[j])) union(i, j);
-    }
-  }
-  const clusters = new Map();
-  for (let i = 0; i < noRefTxns.length; i++) {
-    const r = find(i);
-    if (!clusters.has(r)) clusters.set(r, []);
-    clusters.get(r).push(noRefTxns[i]);
-  }
-  for (const txns of clusters.values()) {
-    if (txns.length > 1) groups.push(txns);
-  }
-
-  // Filter out groups where every pair has already been dismissed.
-  const visibleGroups = groups
-    .filter(txns => !isGroupFullyDismissed(txns))
-    .sort((a, b) => b[0].date - a[0].date); // newest first
-
-  // Count dismissed groups (for the "X pairs previously dismissed" hint).
-  const dismissedPairsCount = Array.isArray(state.notDuplicates) ? state.notDuplicates.length : 0;
+  // Keep only groups with more than one transaction
+  const dupeGroups = [...groups.entries()]
+    .filter(([, txns]) => txns.length > 1)
+    .sort(([, a], [, b]) => b[0].date - a[0].date); // newest first
 
   const listEl = document.getElementById('dupes-list');
   listEl.innerHTML = '';
 
-  if (visibleGroups.length === 0) {
-    const hint = dismissedPairsCount > 0
-      ? `<p style="text-align:center;color:var(--t2);padding:6px 0;font-size:12px">${dismissedPairsCount} pair${dismissedPairsCount === 1 ? '' : 's'} previously dismissed.</p>`
-      : '';
-    listEl.innerHTML = '<p style="text-align:center;color:var(--t2);padding:24px 0">No duplicates found.</p>' + hint;
+  if (dupeGroups.length === 0) {
+    listEl.innerHTML = '<p style="text-align:center;color:var(--t2);padding:24px 0">No duplicates found.</p>';
     document.getElementById('dupes-footer').style.display = 'none';
     document.getElementById('dupes-overlay').classList.add('show');
     return;
   }
 
   document.getElementById('dupes-footer').style.display = '';
+  let totalDupes = 0;
 
-  for (const txns of visibleGroups) {
+  for (const [key, txns] of dupeGroups) {
+    totalDupes += txns.length;
     const group = document.createElement('div');
     group.className = 'dupe-group';
-    // Stash the ids on the element so the "Not duplicates" handler can dismiss them.
-    group.dataset.ids = txns.map(t => t.id).join(',');
 
     const amt = txns[0].amount;
     const amtStr = (amt < 0 ? '-' : '') + '$' + Math.abs(amt).toFixed(2);
     const amtColor = amt >= 0 ? 'var(--grn)' : 'var(--red)';
 
-    // Show date range if dates differ within the group (pending/settled drift visible).
-    const dateStrs = [...new Set(txns.map(t => t.dateStr))].sort();
-    const dateLabel = dateStrs.length === 1
-      ? escHtml(dateStrs[0])
-      : `${escHtml(dateStrs[0])} – ${escHtml(dateStrs[dateStrs.length - 1])}`;
-
-    const header = document.createElement('div');
-    header.className = 'dupe-group-header';
-    header.style.display = 'flex';
-    header.style.justifyContent = 'space-between';
-    header.style.alignItems = 'center';
-    header.style.gap = '8px';
-    header.innerHTML = `
-      <span>${dateLabel} &nbsp;·&nbsp; <span style="color:${amtColor}">${amtStr}</span> &nbsp;·&nbsp; ${escHtml(txns[0].account || '')} &nbsp;·&nbsp; ${txns.length} transactions</span>
-      <button class="btn-sm dupe-not-dup-btn" style="padding:4px 10px;font-size:12px" title="Confirm these are NOT duplicates — won't ask again">✓ Not duplicates</button>
-    `;
-    group.appendChild(header);
+    group.innerHTML = `<div class="dupe-group-header">${escHtml(txns[0].dateStr)} &nbsp;·&nbsp; <span style="color:${amtColor}">${amtStr}</span> &nbsp;·&nbsp; ${escHtml(txns[0].account || '')} &nbsp;·&nbsp; ${txns.length} transactions</div>`;
 
     for (let i = 0; i < txns.length; i++) {
       const t = txns[i];
@@ -2727,32 +2558,13 @@ function findDuplicates() {
       item.innerHTML = `
         <label>
           <input type="checkbox" value="${t.id}" class="dupe-check" ${i > 0 ? 'checked' : ''}>
-          <span class="dupe-desc" title="${escHtml(t.description)}">${escHtml(t.dateStr)} &nbsp;·&nbsp; ${escHtml(t.description)}</span>
+          <span class="dupe-desc" title="${escHtml(t.description)}">${escHtml(t.description)}</span>
         </label>
         <span class="dupe-cat">${escHtml(catLabel)}</span>
         <span class="dupe-amt" style="color:${amtColor}">${amtStr}</span>
       `;
       group.appendChild(item);
     }
-
-    // Per-group dismiss handler.
-    const notDupBtn = header.querySelector('.dupe-not-dup-btn');
-    notDupBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      const ids = group.dataset.ids.split(',');
-      dismissDupeGroup(ids);
-      // Remove this group from the DOM and update the visible count.
-      group.remove();
-      // If no groups left, show the empty state.
-      if (!listEl.querySelector('.dupe-group')) {
-        const remaining = Array.isArray(state.notDuplicates) ? state.notDuplicates.length : 0;
-        listEl.innerHTML = `<p style="text-align:center;color:var(--t2);padding:24px 0">No duplicates found.</p><p style="text-align:center;color:var(--t2);padding:6px 0;font-size:12px">${remaining} pair${remaining === 1 ? '' : 's'} previously dismissed.</p>`;
-        document.getElementById('dupes-footer').style.display = 'none';
-      } else {
-        updateDupeCount();
-      }
-    });
-
     listEl.appendChild(group);
   }
 
@@ -2788,19 +2600,6 @@ function deleteSelectedDupes() {
 
 function closeDupes() {
   document.getElementById('dupes-overlay').classList.remove('show');
-}
-
-function confirmClearDismissedDupes() {
-  const n = Array.isArray(state.notDuplicates) ? state.notDuplicates.length : 0;
-  if (n === 0) {
-    setStatus('No dismissed pairs to clear.');
-    setTimeout(() => setStatus(''), 3000);
-    return;
-  }
-  if (!confirm(`Clear ${n} dismissed duplicate pair${n === 1 ? '' : 's'}?\n\nFind Duplicates will start asking about them again next time you open it.`)) return;
-  clearAllDismissedDupes();
-  setStatus(`Cleared ${n} dismissed pair${n === 1 ? '' : 's'}.`);
-  setTimeout(() => setStatus(''), 4000);
 }
 
 // ══ AI Categorisation ═════════════════════════════════════════════════════════
