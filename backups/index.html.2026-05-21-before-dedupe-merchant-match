@@ -1631,42 +1631,19 @@ function extractRefNumber(desc) {
   return m ? m[1] : null;
 }
 
-// Words to ignore when extracting the merchant name from a description.
-// These are bank/payment-system noise that appear in many descriptions and
-// would cause false matches if treated as merchant words.
-const DESC_NOISE_WORDS = new Set([
-  'bpay', 'internet', 'eftpos', 'card', 'value', 'date',
-  'transfer', 'transfers', 'internal', 'external', 'payment', 'payments',
-  'direct', 'debit', 'credit', 'withdrawal', 'deposit',
-  'visa', 'mastercard', 'eft', 'pos', 'atm',
-  'pty', 'ltd', 'inc', 'aus', 'australia', 'aud',
-  'the', 'and', 'for', 'from', 'ref'
-]);
-
-// Pull the "merchant words" out of a description: lowercase tokens of 3+
-// chars that aren't bank noise and aren't mostly digits (BPAY refs, card
-// numbers, etc). Returns a Set so callers can do set-overlap comparisons.
-// Example: "BPAY D2388211334 ICON WATER" → {"icon","water"}
-//          "INTERNET BPAY ICON WATER 999944955602" → {"icon","water"}
+// Normalise a description so two ways of describing the same merchant collapse
+// to the same string. Strips card-number suffixes ("CARD XXXX1234"), value-date
+// stamps ("VALUE DATE 09/05"), and reduces whitespace + punctuation.
+// Returns the first 12 alphanumeric chars as a stable matching key.
 function descKey(desc) {
   let s = (desc || '').toLowerCase();
-  // Strip the same noise patterns the old descKey handled.
   s = s.replace(/\bvalue date\b[^a-z0-9]*\d{1,2}\/\d{1,2}(\/\d{2,4})?/gi, ' ');
   s = s.replace(/\bcard\s+x+\d+/gi, ' ');
   s = s.replace(/\bxx\d{2,}\b/gi, ' ');
   s = s.replace(/[^a-z0-9 ]+/g, ' ');
-  const words = new Set();
-  for (const tok of s.split(/\s+/)) {
-    if (tok.length < 3) continue;                  // skip short connectors
-    if (DESC_NOISE_WORDS.has(tok)) continue;       // skip bank noise
-    if (/^\d+$/.test(tok)) continue;               // skip pure-digit tokens
-    // Skip tokens that are mostly digits (e.g. "d2388211334" — BPAY refs
-    // with a letter prefix). Threshold: more than half digits.
-    const digits = (tok.match(/\d/g) || []).length;
-    if (digits * 2 > tok.length) continue;
-    words.add(tok);
-  }
-  return words;
+  s = s.replace(/\s+/g, ' ').trim();
+  // First 12 alphanumeric chars (no spaces) — usually merchant name.
+  return s.replace(/\s/g, '').slice(0, 12);
 }
 
 // Days between two YYYY-MM-DD strings. Returns Infinity if either is malformed.
@@ -1678,22 +1655,17 @@ function daysBetween(d1, d2) {
 }
 
 // Two transactions are "near-duplicates" if same amount + same account, ±5 days,
-// AND their descriptions share at least one meaningful merchant word. Sharing
-// one word is enough — for short merchant names like "Icon Water" or "Aldi" we
-// can't demand more, and the same-amount + same-account + date-window guardrails
-// make false positives unlikely.
+// AND descriptions normalise to the same merchant key. Tighter than just date+amount
+// so we don't flag two coffees on consecutive days.
 const DUPE_DATE_WINDOW_DAYS = 5;
 function isNearDuplicate(a, b) {
   if (a.amount !== b.amount) return false;
   if ((a.account || '') !== (b.account || '')) return false;
   if (daysBetween(a.dateStr, b.dateStr) > DUPE_DATE_WINDOW_DAYS) return false;
-  const wa = descKey(a.description);
-  const wb = descKey(b.description);
-  if (!wa.size || !wb.size) return false;
-  for (const w of wa) {
-    if (wb.has(w)) return true;
-  }
-  return false;
+  const ka = descKey(a.description);
+  const kb = descKey(b.description);
+  if (!ka || !kb) return false;
+  return ka === kb;
 }
 
 // "Not duplicates" memory ----------------------------------------------------
