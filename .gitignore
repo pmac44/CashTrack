@@ -19,3 +19,6 @@ desktop.ini
 *.log
 *.tmp
 *~
+
+# Local rollback copies of index.html / sw.js — never publish
+backups/
