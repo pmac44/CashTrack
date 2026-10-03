@@ -3033,7 +3033,7 @@ function setReviewMode(mode) {
   document.getElementById('ai-review-apply').textContent   = r ? 'Save decisions' : 'Apply selected';
 }
 
-const RULE_REVIEW_HINT = "Choose Change to follow the rule, or Keep to leave it and not be asked again. Undecided ones come back next time.";
+const RULE_REVIEW_HINT = "Click the current category to keep it (you won't be asked again), or the rule's category to change it. Undecided ones come back next time.";
 
 function openRuleReview(onlyWord, title, showKept) {
   ruleReviewWord = onlyWord || null;
@@ -3054,7 +3054,7 @@ function refreshRuleReview() {
   const nNew = aiReviewSuggestions.length - nKept;
   document.getElementById('ai-review-subtitle').textContent =
     `${nNew} transaction${nNew === 1 ? '' : 's'} don't match. ` + RULE_REVIEW_HINT
-    + (showKept ? ` Showing ${nKept} kept as is — choose Change to change one after all.` : '');
+    + (showKept ? ` Showing ${nKept} kept as is — click its rule category to change it after all.` : '');
   renderAIReviewList();
 }
 
@@ -3096,35 +3096,76 @@ function renderAIReviewList() {
   updateReviewSelectedCount();
 }
 
-// Two-button choice for a rule-check row. Clicking the active button again
-// returns it to undecided.
-function makeDecisionControl(s) {
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;gap:4px';
-  const mk = (val, label, color) => {
+// Rule-check row: description, then the CURRENT category (click = Keep) and
+// the RULE's category (click = Change to). Clicking the chosen one again
+// returns the row to undecided. Dropdown on the right picks a different target.
+function makeRuleReviewRow(s) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:1fr auto 18px auto 110px;gap:8px 10px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--brd)';
+
+  const desc = document.createElement('div');
+  desc.style.minWidth = '0';
+  desc.innerHTML = `
+    <div style="font-size:13px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(s.tx.description)}">${escHtml(s.tx.description)}</div>
+    <div style="font-size:11px;color:var(--t2);font-family:monospace;margin-top:2px">${s.tx.dateStr} &nbsp;·&nbsp; ${fmt(s.tx.amount)} &nbsp;·&nbsp; rule: "${escHtml(s.ruleWord)}"${s.kept ? ' &nbsp;·&nbsp; <span style="color:var(--grn)">kept as is</span>' : ''}</div>
+  `;
+
+  const mkChoice = (val, caption) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = label;
-    b.onclick = () => { s.decision = s.decision === val ? null : val; wrap.refresh(); updateReviewSelectedCount(); };
-    b._val = val; b._color = color;
-    wrap.appendChild(b);
+    b.onclick = () => { s.decision = s.decision === val ? null : val; refresh(); updateReviewSelectedCount(); };
+    b._val = val; b._caption = caption;
+    return b;
   };
-  mk('change', 'Change', 'var(--acc)');
-  mk('keep', 'Keep', 'var(--grn)');
-  wrap.refresh = () => {
-    for (const b of wrap.children) {
-      const on = s.decision === b._val;
-      b.style.cssText = `font-size:11px;font-family:monospace;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid ${on ? b._color : 'var(--brd)'};background:${on ? b._color : 'transparent'};color:${on ? 'var(--bg)' : 'var(--t2)'};font-weight:${on ? 700 : 400}`;
-    }
+  const keepBtn   = mkChoice('keep',   'KEEP');
+  const changeBtn = mkChoice('change', 'CHANGE TO');
+  const arrow = document.createElement('div');
+  arrow.style.cssText = 'color:var(--t2);font-size:13px;text-align:center';
+  arrow.textContent = '→';
+
+  const paint = (b, catId) => {
+    const cat = CAT_MAP[catId] || CAT_MAP.other;
+    const on = s.decision === b._val;
+    const other = s.decision && !on;
+    b.style.cssText = `display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;background:none;border:none;padding:2px;opacity:${other ? 0.35 : 1}`;
+    b.innerHTML = `
+      <span style="font-size:9px;letter-spacing:1px;font-family:monospace;color:${on ? cat.color : 'var(--t2)'};font-weight:${on ? 700 : 400}">${on ? '✓ ' : ''}${b._caption}</span>
+      <span style="font-size:12px;font-family:monospace;white-space:nowrap;color:${on ? 'var(--bg)' : cat.color};background:${on ? cat.color : cat.color + '18'};border:${on ? 2 : 1}px solid ${on ? cat.color : cat.color + '66'};border-radius:20px;padding:3px 10px;font-weight:${on ? 700 : 400}">${escHtml(cat.label)}</span>`;
   };
-  wrap.refresh();
-  return wrap;
+  const refresh = () => {
+    paint(keepBtn, s.tx.category);
+    paint(changeBtn, s.suggestedCat);
+    row.style.background = s.decision === 'keep' ? 'rgba(74,222,128,0.05)'
+                         : s.decision === 'change' ? 'rgba(240,136,62,0.06)' : '';
+  };
+
+  const sel = document.createElement('select');
+  sel.title = 'Change to a different category instead';
+  sel.style.cssText = 'background:var(--bg3);border:1px solid var(--brd);border-radius:7px;padding:4px 8px;color:var(--txt);font-size:12px;font-family:monospace;cursor:pointer;width:100%';
+  for (const cat of sortedCats()) {
+    const opt = document.createElement('option');
+    opt.value = cat.id;
+    opt.textContent = cat.label;
+    if (cat.id === s.suggestedCat) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  sel.onchange = () => {
+    s.suggestedCat = sel.value;
+    // Picking the current category is the same as Keep; anything else is Change
+    s.decision = sel.value === s.tx.category ? 'keep' : 'change';
+    refresh();
+    updateReviewSelectedCount();
+  };
+
+  refresh();
+  row.append(desc, keepBtn, arrow, changeBtn, sel);
+  return row;
 }
 
 function makeReviewRow(s) {
+  if (reviewMode === 'rules') return makeRuleReviewRow(s);
   const row = document.createElement('div');
-  const rulesMode = reviewMode === 'rules';
-  row.style.cssText = `display:grid;grid-template-columns:${rulesMode ? 'auto' : '32px'} 1fr auto 110px;gap:8px 14px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--brd)`;
+  row.style.cssText = 'display:grid;grid-template-columns:32px 1fr auto 110px;gap:8px 14px;align-items:center;padding:10px 24px;border-bottom:1px solid var(--brd)';
   if (s.isChange) row.style.background = 'rgba(240,136,62,0.04)';
 
   // Checkbox
@@ -3133,13 +3174,12 @@ function makeReviewRow(s) {
   cb.checked = s.accepted;
   cb.style.cssText = 'width:16px;height:16px;cursor:pointer;accent-color:var(--acc)';
   cb.onchange = () => { s.accepted = cb.checked; updateReviewSelectedCount(); };
-  const lead = rulesMode ? makeDecisionControl(s) : cb;
 
   // Description + date
   const desc = document.createElement('div');
   desc.innerHTML = `
     <div style="font-size:13px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(s.tx.description)}">${escHtml(s.tx.description)}</div>
-    <div style="font-size:11px;color:var(--t2);font-family:monospace;margin-top:2px">${s.tx.dateStr} &nbsp;·&nbsp; ${fmt(s.tx.amount)}${s.ruleWord ? ` &nbsp;·&nbsp; rule: "${escHtml(s.ruleWord)}"` : ''}${s.kept ? ' &nbsp;·&nbsp; <span style="color:var(--acc)">kept as is</span>' : ''}</div>
+    <div style="font-size:11px;color:var(--t2);font-family:monospace;margin-top:2px">${s.tx.dateStr} &nbsp;·&nbsp; ${fmt(s.tx.amount)}</div>
   `;
 
   // Current → suggested category display
@@ -3174,8 +3214,6 @@ function makeReviewRow(s) {
     s.isChange = s.tx.category !== sel.value;
     s.accepted = true;
     cb.checked = true;
-    // Picking a category in a rule check is a decision to change it
-    if (rulesMode) { s.decision = 'change'; lead.refresh(); }
     // Update the category display pill
     const newCat = CAT_MAP[sel.value] || CAT_MAP.other;
     if (s.isChange) {
@@ -3194,7 +3232,7 @@ function makeReviewRow(s) {
     updateReviewSelectedCount();
   };
 
-  row.appendChild(lead);
+  row.appendChild(cb);
   row.appendChild(desc);
   row.appendChild(catChange);
   row.appendChild(sel);

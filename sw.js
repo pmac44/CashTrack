@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cashtrack-v47';
+const CACHE_NAME = 'cashtrack-v49';
 const ASSETS = [
   './',
   './index.html',
@@ -11,7 +11,10 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
+  // cache:'reload' skips the browser's HTTP cache (GitHub Pages allows 10 min),
+  // so a new version never re-caches the previous index.html.
+  e.waitUntil(caches.open(CACHE_NAME).then(cache =>
+    cache.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))));
   self.skipWaiting();
 });
 
