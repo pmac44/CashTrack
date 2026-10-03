@@ -213,8 +213,8 @@
   tbody tr { border-top: 1px solid var(--brd); }
   tbody tr:hover { background: rgba(255,255,255,0.02); }
   td { padding: 9px 10px; vertical-align: middle; }
-  td.date-col { font-family: monospace; font-size: 12px; color: var(--t2); white-space: nowrap; }
-  td.desc-col { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  td.date-col { font-family: monospace; font-size: 13px; color: var(--t2); white-space: nowrap; }
+  td.desc-col { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
   td.cat-col { white-space: nowrap; }
   .preset-btn {
     background: var(--bg3); border: 1px solid var(--brd); color: var(--t2);
@@ -229,7 +229,7 @@
   .preset-btn.custom-preset .preset-x:hover { opacity: 1; color: #e55; }
   .preset-btn.save-preset-btn { border-style: dashed; color: var(--t2); font-size: 12px; }
   td.note-col { min-width: 80px; max-width: 180px; }
-  td.amt-col { font-family: monospace; font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; }
+  td.amt-col { font-family: monospace; font-size: 14px; font-weight: 600; text-align: right; white-space: nowrap; }
 
   /* ── Mobile responsive ── */
   /* The mobile More/Less toggle is hidden on desktop — desktop has plenty of
@@ -419,11 +419,11 @@
     }
     tbody tr:hover { background: transparent; }
     tbody td { display: block; padding: 0; border: none; }
-    td.date-col   { grid-column: 1; grid-row: 1; font-size: 11px; }
-    td.amt-col    { grid-column: 2; grid-row: 1; font-size: 14px; font-weight: 700; }
+    td.date-col   { grid-column: 1; grid-row: 1; font-size: 12px; }
+    td.amt-col    { grid-column: 2; grid-row: 1; font-size: 15px; font-weight: 700; }
     td.desc-col   { grid-column: 1 / span 2; grid-row: 2;
                     max-width: none; white-space: normal; overflow: visible;
-                    text-overflow: clip; font-size: 13px; line-height: 1.35;
+                    text-overflow: clip; font-size: 15px; line-height: 1.35;
                     word-break: break-word; }
     td.desc-col > div { white-space: normal !important; overflow: visible !important;
                         text-overflow: clip !important; }
@@ -431,8 +431,8 @@
                     white-space: normal; display: flex; flex-wrap: wrap;
                     gap: 6px; align-items: center; }
     td.note-col   { grid-column: 1 / span 2; grid-row: 4; max-width: none; }
-    td.note-col input { width: 100% !important; font-size: 13px !important; }
-    .cat-select { font-size: 12px; padding: 4px 22px 4px 10px; }
+    td.note-col input { width: 100% !important; font-size: 14px !important; }
+    .cat-select { font-size: 13px; padding: 4px 22px 4px 10px; }
     /* Always show the ✕ delete button on mobile (override JS opacity) */
     td.amt-col button {
       opacity: 1 !important;
@@ -588,7 +588,7 @@
   }
   .cat-select {
     background: transparent; border: 1px solid transparent; border-radius: 20px;
-    padding: 3px 10px; font-size: 12px; font-family: monospace; font-weight: 600;
+    padding: 3px 10px; font-size: 13px; font-family: monospace; font-weight: 600;
     cursor: pointer; outline: none; transition: border-color 0.15s;
     -webkit-appearance: none; appearance: none;
     padding-right: 22px;
@@ -3696,11 +3696,11 @@ function renderTransactions() {
     tr.innerHTML = `
       <td class="date-col">
         ${tx.dateStr}
-        ${tx.account && tx.account !== 'Unknown account' ? `<div style="font-size:10px;color:var(--t2);margin-top:1px">${escHtml(tx.account)}</div>` : ''}
+        ${tx.account && tx.account !== 'Unknown account' ? `<div style="font-size:11px;color:var(--t2);margin-top:1px">${escHtml(tx.account)}</div>` : ''}
       </td>
       <td class="desc-col" title="${escHtml(tx.rawDetails || tx.description)}">
         ${escHtml(tx.description)}
-        ${tx.rawDetails && tx.rawDetails !== tx.description ? `<div style="font-size:11px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(tx.rawDetails)}</div>` : ''}
+        ${tx.rawDetails && tx.rawDetails !== tx.description ? `<div style="font-size:12px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(tx.rawDetails)}</div>` : ''}
       </td>
       <td class="note-col"></td>
       <td class="cat-col"></td>
@@ -3766,7 +3766,7 @@ function renderTransactions() {
     noteInput.type = 'text';
     noteInput.value = tx.note || '';
     noteInput.placeholder = 'Add note…';
-    noteInput.style.cssText = 'background:transparent;border:none;border-bottom:1px solid transparent;color:var(--txt);font-size:12px;font-family:monospace;width:140px;outline:none;padding:2px 4px;transition:border-color 0.15s';
+    noteInput.style.cssText = 'background:transparent;border:none;border-bottom:1px solid transparent;color:var(--txt);font-size:13px;font-family:monospace;width:140px;outline:none;padding:2px 4px;transition:border-color 0.15s';
     noteInput.onfocus = () => noteInput.style.borderBottomColor = 'var(--brd)';
     noteInput.onblur  = () => {
       noteInput.style.borderBottomColor = 'transparent';
