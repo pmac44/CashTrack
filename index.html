@@ -1739,6 +1739,32 @@ function isNearDuplicate(a, b) {
   return false;
 }
 
+// Pending stubs --------------------------------------------------------------
+// When NAB exports a transfer that hasn't finished processing, it appears as a
+// bare reference ("ONLINE Z7757186411", "NPP-NATAAU33XXXN2026…"), dated a day
+// or two early. The next export has the finished version with a real
+// description ("INTERNET TRANSFER Mortgage payment"). The two share no words,
+// so isNearDuplicate can't link them — these helpers do.
+const PENDING_STUB_DAYS = 4;
+function isPendingStub(desc) {
+  return /^(ONLINE [A-Z]\d{9,10}|NPP-\S+)$/i.test((desc || '').trim());
+}
+// True if `stub` is the early copy of `full`: same amount + account, and the
+// finished version dated 0–4 days on or after the stub.
+function isStubOf(stub, full) {
+  if (!isPendingStub(stub.description) || isPendingStub(full.description)) return false;
+  if (stub.amount !== full.amount) return false;
+  if ((stub.account || 'Unknown account') !== (full.account || 'Unknown account')) return false;
+  const days = (new Date(full.date) - new Date(stub.date)) / 86400000;
+  return days >= 0 && days <= PENDING_STUB_DAYS;
+}
+// Identity key for exact repeats (same date, amount, description, account).
+// Recomputed rather than read from t.fingerprint, which older data stored
+// without the account suffix.
+function exactKey(t) {
+  return fingerprint(t.dateStr, t.amount, t.description) + '::' + (t.account || 'Unknown account');
+}
+
 // "Not duplicates" memory ----------------------------------------------------
 // State stores [{ ids: [id1, id2], at: timestamp }] with ids sorted alphabetically.
 
@@ -2616,24 +2642,43 @@ function importCSV(text) {
   //      Catches card purchases that drift by a day or two when the bank settles
   //      a pending transaction. Description check stops two same-day coffees
   //      from being silently merged.
+  //   3. Exact repeat (same date + amount + description + account) of something
+  //      already stored — e.g. "INTERNET TRANSFER I5052076", which has neither a
+  //      ref nor merchant words, so 1 and 2 can't see it. Counted, so two
+  //      genuinely identical same-day purchases in one CSV both still import.
+  //   4. Pending stubs (see isPendingStub): a stub whose finished version is
+  //      already here is skipped; a finished version arriving replaces its stub.
+  // Refs and exact keys include soft-deleted rows, so a deleted transaction
+  // can't be resurrected by re-importing an old CSV.
   const refKey = (ref, amount) => `${ref}::${amount}`;
 
   const existingRefs = new Set();
   const existingNoRef = []; // transactions without a ref, used for near-dup matching
+  const existingExact = new Map(); // exactKey → count
   for (const t of state.transactions) {
-    if (t.deleted) continue;
+    const ek = exactKey(t);
+    existingExact.set(ek, (existingExact.get(ek) || 0) + 1);
     const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
     if (ref) {
       existingRefs.add(refKey(ref, t.amount));
-    } else {
+    } else if (!t.deleted) {
       existingNoRef.push(t);
     }
   }
   const importRefs = new Set();
   const importNoRef = []; // rows already accepted in this batch, for in-batch dedup
+  const batchExact = new Map();
 
-  let added = 0, dupes = 0;
+  let added = 0, dupes = 0, replaced = 0;
   for (const row of parsed) {
+    const ek = exactKey(row);
+    const seen = (batchExact.get(ek) || 0) + 1;
+    batchExact.set(ek, seen);
+    if (seen <= (existingExact.get(ek) || 0)) { dupes++; continue; }
+    if (isPendingStub(row.description) &&
+        state.transactions.some(t => !t.deleted && isStubOf(row, t))) {
+      dupes++; continue;
+    }
     const ref = extractRefNumber(row.description) || extractRefNumber(row.rawDetails);
     if (ref) {
       // Ref-number dedup: if we already have this ref+amount, it's a duplicate
@@ -2678,15 +2723,23 @@ function importCSV(text) {
       modifiedAt: Date.now(), // stamp for sync merge
     });
     added++;
+    // Finished version of an earlier pending stub? Soft-delete the stub
+    // (closest date first) so it isn't counted twice.
+    if (!isPendingStub(row.description)) {
+      const stub = state.transactions
+        .filter(t => !t.deleted && isStubOf(t, row))
+        .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+      if (stub) { stub.deleted = true; touch(stub); replaced++; }
+    }
   }
 
   // Sort newest first
   state.transactions.sort((a, b) => b.date - a.date);
 
-  if (added > 0) scheduleSave();
+  if (added > 0 || replaced > 0) scheduleSave();
   populateAccountFilters();
   renderAll();
-  showImportModal(parsed.length, added, dupes);
+  showImportModal(parsed.length, added, dupes, null, replaced);
 }
 
 // ══ Duplicate Finder ══════════════════════════════════════════════════════════
@@ -2701,45 +2754,61 @@ function findDuplicates() {
   // Groups where every pair is already in state.notDuplicates are filtered out,
   // so dismissed pairs never show up again.
 
-  // First, partition transactions into ref-haves and ref-nots.
-  const byRef = new Map();
-  const noRefTxns = [];
-  for (const t of state.transactions) {
-    if (t.deleted) continue;
-    const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
-    if (ref) {
-      const k = `${ref}::${t.amount}`;
-      if (!byRef.has(k)) byRef.set(k, []);
-      byRef.get(k).push(t);
-    } else {
-      noRefTxns.push(t);
-    }
-  }
-
-  // Ref-number groups: anything with >1 entry is a candidate group.
-  const groups = [];
-  for (const txns of byRef.values()) {
-    if (txns.length > 1) groups.push(txns);
-  }
-
-  // Near-duplicate groups: union-find over noRefTxns using isNearDuplicate as the edge.
-  // Simple O(n²) is fine — we're talking thousands of transactions, not millions.
-  const parent = noRefTxns.map((_, i) => i);
+  // One union-find over all live transactions. Edges:
+  //   • same NAB ref + amount (date ignored)
+  //   • near-duplicate (no-ref transactions only)
+  //   • exact repeat (same date, amount, description, account)
+  //   • pending stub → its finished version
+  const live = state.transactions.filter(t => !t.deleted);
+  const parent = live.map((_, i) => i);
   const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
   const union = (i, j) => { const ri = find(i), rj = find(j); if (ri !== rj) parent[ri] = rj; };
-  for (let i = 0; i < noRefTxns.length; i++) {
-    for (let j = i + 1; j < noRefTxns.length; j++) {
-      if (isNearDuplicate(noRefTxns[i], noRefTxns[j])) union(i, j);
+
+  const firstByKey = new Map();
+  const linkByKey = (key, i) => {
+    if (firstByKey.has(key)) union(firstByKey.get(key), i); else firstByKey.set(key, i);
+  };
+  const noRefIdx = [];
+  live.forEach((t, i) => {
+    const ref = extractRefNumber(t.description) || extractRefNumber(t.rawDetails);
+    if (ref) linkByKey('ref::' + ref + '::' + t.amount, i); else noRefIdx.push(i);
+    linkByKey('exact::' + exactKey(t), i);
+  });
+  // Simple O(n²) is fine — thousands of transactions, not millions.
+  for (let a = 0; a < noRefIdx.length; a++) {
+    for (let b = a + 1; b < noRefIdx.length; b++) {
+      if (isNearDuplicate(live[noRefIdx[a]], live[noRefIdx[b]])) union(noRefIdx[a], noRefIdx[b]);
     }
   }
+  // Each stub links to ONE finished version (closest date), and each finished
+  // version is claimed once. Linking to every candidate would pull two genuine
+  // same-amount payments into one group (e.g. a $1,000 mortgage payment and a
+  // $1,000 extra payment on the same day) and pre-tick a real one for removal.
+  const claimed = new Set();
+  live.forEach((t, i) => {
+    if (!isPendingStub(t.description)) return;
+    let best = -1, bestGap = Infinity;
+    live.forEach((u, j) => {
+      if (claimed.has(j) || !isStubOf(t, u)) return;
+      const gap = Math.abs(u.date - t.date);
+      if (gap < bestGap) { best = j; bestGap = gap; }
+    });
+    if (best >= 0) { claimed.add(best); union(i, best); }
+  });
+
   const clusters = new Map();
-  for (let i = 0; i < noRefTxns.length; i++) {
+  live.forEach((t, i) => {
     const r = find(i);
     if (!clusters.has(r)) clusters.set(r, []);
-    clusters.get(r).push(noRefTxns[i]);
-  }
+    clusters.get(r).push(t);
+  });
+  const groups = [];
   for (const txns of clusters.values()) {
-    if (txns.length > 1) groups.push(txns);
+    if (txns.length < 2) continue;
+    // Keeper first (the UI pre-ticks everything after the first row):
+    // finished versions before pending stubs, then newest first.
+    txns.sort((a, b) => (isPendingStub(a.description) - isPendingStub(b.description)) || (b.date - a.date));
+    groups.push(txns);
   }
 
   // Filter out groups where every pair has already been dismissed.
@@ -2801,7 +2870,7 @@ function findDuplicates() {
       item.innerHTML = `
         <label>
           <input type="checkbox" value="${t.id}" class="dupe-check" ${i > 0 ? 'checked' : ''}>
-          <span class="dupe-desc" title="${escHtml(t.description)}">${escHtml(t.dateStr)} &nbsp;·&nbsp; ${escHtml(t.description)}</span>
+          <span class="dupe-desc" title="${escHtml(t.description)}">${escHtml(t.dateStr)} &nbsp;·&nbsp; ${escHtml(t.description)}${isPendingStub(t.description) ? ' <span style="color:var(--acc);font-size:11px">· early copy</span>' : ''}</span>
         </label>
         <span class="dupe-cat">${escHtml(catLabel)}</span>
         <span class="dupe-amt" style="color:${amtColor}">${amtStr}</span>
@@ -4832,7 +4901,7 @@ function revertRulesFromSettings() {
   if (status) status.innerHTML = '<span style="color:var(--t2)">Reverted to last saved rules.</span>';
 }
 
-function showImportModal(total, added, dupes, customMsg) {
+function showImportModal(total, added, dupes, customMsg, replaced) {
   document.getElementById('modal-title').textContent = customMsg ? 'Notice' : 'Import complete';
   const body = document.getElementById('modal-body');
   if (customMsg) {
@@ -4842,6 +4911,7 @@ function showImportModal(total, added, dupes, customMsg) {
       <div class="modal-row"><span style="color:var(--t2)">Transactions in file</span><span class="modal-stat">${total}</span></div>
       <div class="modal-row"><span style="color:var(--t2)">New (imported)</span><span class="modal-stat" style="color:var(--grn)">${added}</span></div>
       <div class="modal-row"><span style="color:var(--t2)">Duplicates skipped</span><span class="modal-stat" style="color:var(--t2)">${dupes}</span></div>
+      ${replaced ? `<div class="modal-row"><span style="color:var(--t2)">Early copies replaced by finished version</span><span class="modal-stat" style="color:var(--acc)">${replaced}</span></div>` : ''}
       ${added === 0 && dupes > 0 ? '<p style="color:var(--t2);font-size:13px">All transactions were already in your data file.</p>' : ''}
     `;
   }
