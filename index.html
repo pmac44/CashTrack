@@ -1745,9 +1745,12 @@ function isNearDuplicate(a, b) {
 // or two early. The next export has the finished version with a real
 // description ("INTERNET TRANSFER Mortgage payment"). The two share no words,
 // so isNearDuplicate can't link them — these helpers do.
+// The credit card side does the same: a bill payment first lands as
+// "0553 17 3124 NAB P ersonal AUS" (or "... 036"), then 0–2 days later as
+// "INTERNET PAYMENT Paying bill".
 const PENDING_STUB_DAYS = 4;
 function isPendingStub(desc) {
-  return /^(ONLINE [A-Z]\d{9,10}|NPP-\S+)$/i.test((desc || '').trim());
+  return /^(ONLINE [A-Z]\d{9,10}|NPP-\S+|\d{4} \d{2} \d{4} NAB P ?ersonal \w+)$/i.test((desc || '').trim());
 }
 // True if `stub` is the early copy of `full`: same amount + account, and the
 // finished version dated 0–4 days on or after the stub.
