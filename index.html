@@ -4017,7 +4017,7 @@ function getGlobalAccountFilter() {
 function getDateFilter() {
   const fromEl = document.getElementById('filter-date-from');
   const toEl   = document.getElementById('filter-date-to');
-  const from   = fromEl && fromEl.value ? new Date(fromEl.value) : null;
+  const from   = fromEl && fromEl.value ? new Date(fromEl.value + 'T00:00:00') : null;
   const to     = toEl   && toEl.value   ? new Date(toEl.value + 'T23:59:59') : null;
   return { from, to };
 }
